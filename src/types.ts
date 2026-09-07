@@ -26,6 +26,29 @@ export interface ProductSuggestion {
   category?: string;
 }
 
+export interface CustomerTransaction {
+  id: string;
+  date: string;
+  time: string;
+  timestamp: number;
+  type: 'invoice_credit' | 'payment' | 'initial_balance';
+  amount: number; // For invoice_credit: +amount (debt). For payment: -amount (reduction).
+  balanceAfter: number;
+  invoiceNumber?: number;
+  invoiceId?: string;
+  notes?: string;
+}
+
+export interface CustomerAccount {
+  id: string;
+  name: string;
+  phone?: string;
+  notes?: string;
+  balance: number; // positive = owed to store (مدين), 0 = cleared, negative = store owes customer
+  createdAt: string;
+  transactions: CustomerTransaction[];
+}
+
 export interface AppSettings {
   storeName: string;
   storeSubtitle: string;
@@ -38,4 +61,4 @@ export interface AppSettings {
   thermalWidth: '58mm' | '80mm';
 }
 
-export type ActiveTab = 'pos' | 'history' | 'catalog' | 'settings';
+export type ActiveTab = 'pos' | 'customers' | 'history' | 'catalog' | 'settings';

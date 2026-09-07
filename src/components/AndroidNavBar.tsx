@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingCart, History, Boxes, Settings } from 'lucide-react';
+import { ShoppingCart, Users, History, Boxes, Settings } from 'lucide-react';
 import { ActiveTab } from '../types';
 import { sound } from '../utils/audio';
 
@@ -8,6 +8,7 @@ interface AndroidNavBarProps {
   onTabChange: (tab: ActiveTab) => void;
   historyCount: number;
   itemsCount: number;
+  debtorsCount?: number;
   isDark?: boolean;
 }
 
@@ -16,6 +17,7 @@ export const AndroidNavBar: React.FC<AndroidNavBarProps> = ({
   onTabChange,
   historyCount,
   itemsCount,
+  debtorsCount = 0,
   isDark = false,
 }) => {
   const tabs = [
@@ -25,6 +27,13 @@ export const AndroidNavBar: React.FC<AndroidNavBarProps> = ({
       icon: ShoppingCart,
       badge: itemsCount > 0 ? itemsCount : undefined,
       badgeColor: 'bg-amber-500',
+    },
+    {
+      id: 'customers' as ActiveTab,
+      label: 'العملاء',
+      icon: Users,
+      badge: debtorsCount > 0 ? debtorsCount : undefined,
+      badgeColor: 'bg-red-500',
     },
     {
       id: 'history' as ActiveTab,
@@ -40,7 +49,7 @@ export const AndroidNavBar: React.FC<AndroidNavBarProps> = ({
     },
     {
       id: 'settings' as ActiveTab,
-      label: 'الضبط والنسخ',
+      label: 'الضبط',
       icon: Settings,
     },
   ];

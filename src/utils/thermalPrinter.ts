@@ -241,61 +241,122 @@ function formatTwoColumns(left: string, right: string, width: number): string {
 }
 
 /**
- * 100% Reliable Thermal Printing via Isolated Iframe
- * Bypasses DOM issues, Tailwind styles, and Android Print Spooler multi-page splits.
+ * 1. Open receipt in a standalone printable window/tab.
+ * This is 100% reliable on Android mobile browsers (Chrome, Samsung Internet)
+ * because it bypasses iframe sandboxes and security blocks.
  */
-export function printThermalReceiptViaIframe(invoice: Invoice, settings: ThermalSettings): Promise<boolean> {
-  return new Promise((resolve) => {
+export function printThermalReceiptViaNewWindow(
+  invoice: Invoice,
+  settings: ThermalSettings
+): boolean {
+  try {
     const html = generateReceiptHtml(invoice, settings);
+    const printWindow = window.open('', '_blank', 'width=450,height=700,menubar=no,toolbar=no,location=no');
 
-    // Remove any existing print frame
-    const existingFrame = document.getElementById('thermal-print-iframe');
-    if (existingFrame) {
-      existingFrame.remove();
+    if (!printWindow) {
+      // Popup blocked - fallback to direct window print
+      return printThermalReceiptDirect(invoice, settings);
     }
 
-    const iframe = document.createElement('iframe');
-    iframe.id = 'thermal-print-iframe';
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = 'none';
-    iframe.style.zIndex = '-9999';
-    iframe.style.visibility = 'hidden';
+    // Add interactive action buttons at the top of the standalone window
+    const interactiveHtml = html.replace(
+      '<body>',
+      `<body>
+        <div class="no-print" style="margin-bottom: 12px; padding: 8px; background: #f1f5f9; border-radius: 8px; text-align: center;">
+          <button onclick="window.print()" style="background: #059669; color: white; border: none; padding: 10px 20px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 6px;">
+            🖨️ اضغط هنا لطباعة الفاتورة
+          </button>
+          <button onclick="window.close()" style="background: #e2e8f0; color: #334155; border: none; padding: 6px 14px; font-size: 13px; border-radius: 6px; cursor: pointer; width: 100%;">
+            إغلاق النافذة
+          </button>
+        </div>`
+    );
 
-    document.body.appendChild(iframe);
+    printWindow.document.open();
+    printWindow.document.write(interactiveHtml);
+    printWindow.document.close();
 
-    const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      resolve(false);
-      return;
-    }
-
-    doc.open();
-    doc.write(html);
-    doc.close();
-
-    // Allow browser time to render fonts and layout before printing
+    // Trigger print after styles load
     setTimeout(() => {
       try {
-        iframe.contentWindow?.focus();
-        iframe.contentWindow?.print();
-        resolve(true);
-      } catch (err) {
-        console.error('Error during print:', err);
-        // Fallback to standard print if iframe print fails
-        window.print();
-        resolve(false);
-      } finally {
-        // Cleanup iframe after printing dialog closes
-        setTimeout(() => {
-          iframe.remove();
-        }, 3000);
+        printWindow.focus();
+        printWindow.print();
+      } catch (e) {
+        console.error('Print window error:', e);
       }
-    }, 250);
-  });
+    }, 400);
+
+    return true;
+  } catch (err) {
+    console.error('Error opening print window:', err);
+    return printThermalReceiptDirect(invoice, settings);
+  }
+}
+
+/**
+ * 2. Direct Window Print Spooler
+ * Uses the main window with dedicated @media print CSS for thermal paper.
+ */
+export function printThermalReceiptDirect(
+  invoice: Invoice,
+  settings: ThermalSettings
+): boolean {
+  try {
+    // Check if #thermal-print-container exists, or create it
+    let container = document.getElementById('thermal-print-direct-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'thermal-print-direct-container';
+      document.body.appendChild(container);
+    }
+
+    const htmlContent = generateReceiptHtml(invoice, settings);
+    // Extract body content
+    const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    const bodyInner = bodyMatch ? bodyMatch[1] : htmlContent;
+
+    container.innerHTML = bodyInner;
+    container.classList.add('thermal-active-print');
+
+    // Trigger print
+    setTimeout(() => {
+      window.print();
+      // Cleanup after print dialog
+      setTimeout(() => {
+        if (container) {
+          container.innerHTML = '';
+          container.classList.remove('thermal-active-print');
+        }
+      }, 1500);
+    }, 200);
+
+    return true;
+  } catch (err) {
+    console.error('Direct print error:', err);
+    window.print();
+    return false;
+  }
+}
+
+/**
+ * 3. Unified Thermal Print dispatcher (checks platform and provides maximum reliability)
+ */
+export async function printThermalReceipt(
+  invoice: Invoice,
+  settings: ThermalSettings
+): Promise<boolean> {
+  // On mobile devices, opening a dedicated printable page or direct window print is far more reliable than iframes
+  const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  if (isMobile) {
+    const success = printThermalReceiptViaNewWindow(invoice, settings);
+    if (!success) {
+      return printThermalReceiptDirect(invoice, settings);
+    }
+    return true;
+  }
+
+  // On desktop, direct window print or new window works seamlessly
+  return printThermalReceiptViaNewWindow(invoice, settings);
 }
 
 /**
@@ -310,7 +371,7 @@ export function printViaRawBT(invoice: Invoice, settings: ThermalSettings): bool
     utf8Bytes.forEach((b) => (binary += String.fromCharCode(b)));
     const base64 = window.btoa(binary);
 
-    // RawBT URI scheme
+    // RawBT URI schemes
     const rawbtUri = `rawbt:data:text/plain;base64,${base64}`;
     
     // Attempt opening RawBT

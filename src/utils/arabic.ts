@@ -40,18 +40,44 @@ export function getSmartMatches<T extends string>(candidates: T[], query: string
     .map((res) => res.original);
 }
 
-export function formatCurrency(num: number, currency: string = 'ر.ي'): string {
-  if (isNaN(num)) return `0.00 ${currency}`;
-  const formatted = num.toLocaleString('en-US', {
+export function parseArabicNumber(val: any): number {
+  if (val === undefined || val === null || val === '') return 0;
+  if (typeof val === 'number') return isNaN(val) || !isFinite(val) ? 0 : val;
+
+  // Convert Eastern Arabic numerals (٠-٩ and ۰-۹) to standard digits
+  const standard = String(val)
+    .replace(/[٠-٩]/g, (d) => (d.charCodeAt(0) - 1632).toString())
+    .replace(/[۰-۹]/g, (d) => (d.charCodeAt(0) - 1776).toString())
+    .replace(/,/g, '')
+    .replace(/،/g, '')
+    .trim();
+
+  const num = parseFloat(standard);
+  return isNaN(num) || !isFinite(num) ? 0 : num;
+}
+
+export function formatCurrency(num: any, currency: string = 'ر.ي'): string {
+  const parsed = parseArabicNumber(num);
+  const formatted = parsed.toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });
   return `${formatted} ${currency}`;
 }
 
-export function formatNumber(num: number): string {
-  if (isNaN(num)) return '0';
-  return num.toLocaleString('en-US', {
+export function formatNumber(num: any): string {
+  if (num === undefined || num === null || num === '') return '0';
+  const parsed = parseArabicNumber(num);
+  return parsed.toLocaleString('en-US', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+export function formatUnitPrice(num: any): string {
+  if (num === undefined || num === null || num === '') return '0';
+  const parsed = parseArabicNumber(num);
+  return parsed.toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });

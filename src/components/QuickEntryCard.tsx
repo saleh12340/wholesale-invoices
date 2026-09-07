@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Zap, User, Plus, Check } from 'lucide-react';
 import { sound } from '../utils/audio';
+import { parseArabicNumber } from '../utils/arabic';
 
 interface QuickEntryCardProps {
   customerName: string;
@@ -90,8 +91,13 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
     if (e) e.preventDefault();
 
     const trimmedName = itemName.trim();
-    const parsedTotal = parseFloat(totalPrice);
-    const parsedQty = parseFloat(quantity) || 1;
+    const parsedQty = parseArabicNumber(quantity) || 1;
+    let parsedTotal = parseArabicNumber(totalPrice);
+
+    // If total price was not typed, check if the item has a known unit price in the catalog
+    if (parsedTotal <= 0 && trimmedName && itemPrices[trimmedName]) {
+      parsedTotal = itemPrices[trimmedName] * parsedQty;
+    }
 
     if (!trimmedName) {
       sound.playError();
@@ -99,7 +105,7 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
       return;
     }
 
-    if (isNaN(parsedTotal) || parsedTotal <= 0) {
+    if (parsedTotal <= 0) {
       sound.playError();
       totalInputRef.current?.focus();
       return;
@@ -121,8 +127,8 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
     setItemName(name);
     sound.playTap();
     const price = itemPrices[name];
-    if (price && (!totalPrice || totalPrice === '0')) {
-      const q = parseFloat(quantity) || 1;
+    const q = parseArabicNumber(quantity) || 1;
+    if (price && (!totalPrice || totalPrice === '0' || totalPrice === '')) {
       setTotalPrice((price * q).toString());
     }
     setShowItemSuggestions(false);

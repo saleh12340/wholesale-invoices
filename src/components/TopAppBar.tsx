@@ -27,6 +27,7 @@ interface TopAppBarProps {
   onToggleDark: () => void;
   onClearAll: () => void;
   onOpenSettings: () => void;
+  onExitApp: () => void;
 }
 
 export const TopAppBar: React.FC<TopAppBarProps> = ({
@@ -44,6 +45,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
   onToggleDark,
   onClearAll,
   onOpenSettings,
+  onExitApp,
 }) => {
   return (
     <header className="no-print space-y-2.5 pt-2 pb-1 select-none">
@@ -137,17 +139,31 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
 
-        {/* Logout / Clear */}
+        {/* Exit App Button with confirmation */}
+        <button
+          id="btn-top-exit-app"
+          onClick={() => {
+            sound.playTap();
+            onExitApp();
+          }}
+          title="الخروج من التطبيق"
+          className="p-1.5 text-red-600 dark:text-red-400 hover:text-red-700 active:scale-90 transition rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40 flex items-center gap-1 font-bold text-xs"
+        >
+          <LogOut className="w-4 h-4" />
+          <span className="text-[10px]">خروج</span>
+        </button>
+
+        {/* Clear Invoice Items */}
         <button
           id="btn-top-clear-all"
           onClick={() => {
             sound.playTap();
             onClearAll();
           }}
-          title="مسح وتفريغ"
+          title="تفريغ أصناف الفاتورة"
           className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-800 active:scale-90 transition rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
         >
-          <LogOut className="w-4 h-4" />
+          <RotateCcw className="w-4 h-4" />
         </button>
 
         {/* Backup / Settings */}

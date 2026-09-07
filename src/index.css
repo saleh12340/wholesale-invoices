@@ -27,12 +27,15 @@
 }
 
 @media print {
-  /* Hide UI elements marked with .no-print */
-  .no-print,
+  /* Completely hide all app shell elements, frames, status bar, and navigation */
+  #app-viewport-container,
+  #app-main-container,
   #android-status-bar,
   #android-bottom-navigation,
+  #top-action-bar,
   #quick-entry-card,
   #empty-invoice-state,
+  .no-print,
   button {
     display: none !important;
   }
@@ -48,9 +51,11 @@
     font-size: 13px !important;
     line-height: 1.35 !important;
     direction: rtl !important;
+    overflow: visible !important;
   }
 
-  #thermal-print-area {
+  #thermal-print-area,
+  #thermal-print-direct-container {
     display: block !important;
     visibility: visible !important;
     width: 76mm !important;
@@ -65,7 +70,8 @@
     break-after: avoid !important;
   }
 
-  #thermal-print-area * {
+  #thermal-print-area *,
+  #thermal-print-direct-container * {
     visibility: visible !important;
   }
 }

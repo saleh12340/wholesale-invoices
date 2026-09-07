@@ -1,7 +1,7 @@
 import React from 'react';
 import { Trash2, ShoppingBag } from 'lucide-react';
 import { InvoiceItem } from '../types';
-import { formatNumber } from '../utils/arabic';
+import { formatNumber, formatUnitPrice, parseArabicNumber } from '../utils/arabic';
 import { sound } from '../utils/audio';
 
 interface InvoiceItemsListProps {
@@ -57,8 +57,10 @@ export const InvoiceItemsList: React.FC<InvoiceItemsListProps> = ({
       <div className="divide-y divide-slate-100 dark:divide-slate-700/60 max-h-[420px] overflow-y-auto">
         {items.map((item, index) => {
           const isEditing = editingIndex === index;
-          const qty = item.qty || 1;
-          const unitPrice = qty > 0 ? (item.total / qty).toFixed(1) : '0.0';
+          const qty = parseArabicNumber(item.qty) || 1;
+          const total = parseArabicNumber(item.total);
+          const rawUnitPrice = qty > 0 ? total / qty : 0;
+          const unitPriceStr = formatUnitPrice(rawUnitPrice);
 
           return (
             <div
@@ -70,14 +72,14 @@ export const InvoiceItemsList: React.FC<InvoiceItemsListProps> = ({
                   : 'hover:bg-slate-50 dark:hover:bg-slate-700/40'
               }`}
             >
-              {/* Right: Total Price (e.g. 60, 000 in bold green) */}
+              {/* Right: Total Price (e.g. 26500 in bold green) */}
               <div className="w-1/4 text-right">
                 <span className="font-mono font-bold text-sm sm:text-base text-emerald-700 dark:text-emerald-400">
-                  {formatNumber(item.total)}
+                  {formatNumber(total)}
                 </span>
               </div>
 
-              {/* Middle: Qty and Item Name (e.g. 5      اكياس بر) */}
+              {/* Middle: Qty and Item Name (e.g. 1      بسمتي 10 ك السحاب) */}
               <div
                 onClick={() => {
                   sound.playTap();
@@ -86,7 +88,7 @@ export const InvoiceItemsList: React.FC<InvoiceItemsListProps> = ({
                 className="w-1/2 flex items-center justify-center gap-3 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400"
                 title="اضغط للتعديل"
               >
-                <span className="font-mono font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm bg-slate-100 dark:bg-slate-700/60 px-1.5 py-0.5 rounded">
                   {qty}
                 </span>
                 <span className="font-semibold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate max-w-[150px] sm:max-w-[200px]">
@@ -103,12 +105,12 @@ export const InvoiceItemsList: React.FC<InvoiceItemsListProps> = ({
                     onDeleteItem(index);
                   }}
                   title="حذف الصنف"
-                  className="p-1 text-red-500 hover:text-red-700 active:scale-95 transition"
+                  className="p-1 text-red-500 hover:text-red-700 active:scale-95 transition rounded-lg hover:bg-red-50 dark:hover:bg-red-950/40"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
                 <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
-                  {unitPrice}
+                  {unitPriceStr}
                 </span>
               </div>
             </div>

@@ -7,13 +7,15 @@ import { InvoiceItemsList } from './components/InvoiceItemsList';
 import { InvoiceSummaryFooter } from './components/InvoiceSummaryFooter';
 import { HistoryView } from './components/HistoryView';
 import { ItemCatalogView } from './components/ItemCatalogView';
+import { CustomersView } from './components/CustomersView';
 import { SettingsView } from './components/SettingsView';
 import { ThermalPrintReceipt } from './components/ThermalPrintReceipt';
 import { ThermalPreviewModal } from './components/ThermalPreviewModal';
+import { ExitConfirmModal } from './components/ExitConfirmModal';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { AndroidToast } from './components/AndroidToast';
 
-import { Invoice, InvoiceItem, AppSettings, ActiveTab } from './types';
+import { Invoice, InvoiceItem, AppSettings, ActiveTab, CustomerAccount, CustomerTransaction } from './types';
 import {
   INITIAL_SUGGESTIONS,
   INITIAL_PRICES,
@@ -21,7 +23,115 @@ import {
   generateWhatsAppMessage,
 } from './utils/arabic';
 import { sound } from './utils/audio';
-import { printThermalReceiptViaIframe, printViaRawBT } from './utils/thermalPrinter';
+import { printThermalReceipt, printThermalReceiptViaNewWindow, printViaRawBT } from './utils/thermalPrinter';
+import { printDirectWebBluetooth } from './utils/bluetoothPrinter';
+import { renderReceiptToCanvas, downloadReceiptImage, shareReceiptImage } from './utils/receiptCanvas';
+import { LogOut } from 'lucide-react';
+
+const INITIAL_CUSTOMER_ACCOUNTS: CustomerAccount[] = [
+  {
+    id: 'c-1',
+    name: 'أبو أحمد',
+    phone: '777123456',
+    balance: 14500,
+    createdAt: '2026-09-01 10:30',
+    notes: 'عميل الحارة - الرصيد السابق',
+    transactions: [
+      {
+        id: 'tx-1-1',
+        date: '2026-09-01',
+        time: '10:30',
+        timestamp: Date.now() - 6 * 86400000,
+        type: 'initial_balance',
+        amount: 14500,
+        balanceAfter: 14500,
+        notes: 'رصيد افتتاحي سابق',
+      },
+    ],
+  },
+  {
+    id: 'c-2',
+    name: 'صالح العمري',
+    phone: '773456789',
+    balance: 28000,
+    createdAt: '2026-09-02 14:15',
+    notes: 'حساب شهري',
+    transactions: [
+      {
+        id: 'tx-2-1',
+        date: '2026-09-02',
+        time: '14:15',
+        timestamp: Date.now() - 5 * 86400000,
+        type: 'initial_balance',
+        amount: 35000,
+        balanceAfter: 35000,
+        notes: 'رصيد سابق',
+      },
+      {
+        id: 'tx-2-2',
+        date: '2026-09-05',
+        time: '18:40',
+        timestamp: Date.now() - 2 * 86400000,
+        type: 'payment',
+        amount: -7000,
+        balanceAfter: 28000,
+        notes: 'سداد نقدي جزء من الحساب',
+      },
+    ],
+  },
+  {
+    id: 'c-3',
+    name: 'محمد علي',
+    phone: '771987654',
+    balance: 0,
+    createdAt: '2026-09-03 09:00',
+    notes: 'حساب مسدد بالكامل',
+    transactions: [
+      {
+        id: 'tx-3-1',
+        date: '2026-09-03',
+        time: '09:00',
+        timestamp: Date.now() - 4 * 86400000,
+        type: 'invoice_credit',
+        amount: 5200,
+        balanceAfter: 5200,
+        invoiceNumber: 1000,
+        notes: 'فاتورة مواد غذائية',
+      },
+      {
+        id: 'tx-3-2',
+        date: '2026-09-04',
+        time: '11:20',
+        timestamp: Date.now() - 3 * 86400000,
+        type: 'payment',
+        amount: -5200,
+        balanceAfter: 0,
+        notes: 'سداد كامل الفاتورة نقداً',
+      },
+    ],
+  },
+  {
+    id: 'c-4',
+    name: 'أبو صالح',
+    phone: '770112233',
+    balance: 9300,
+    createdAt: '2026-09-04 16:00',
+    notes: 'عميل دائم',
+    transactions: [
+      {
+        id: 'tx-4-1',
+        date: '2026-09-04',
+        time: '16:00',
+        timestamp: Date.now() - 3 * 86400000,
+        type: 'invoice_credit',
+        amount: 9300,
+        balanceAfter: 9300,
+        invoiceNumber: 1002,
+        notes: 'فاتورة آجل',
+      },
+    ],
+  },
+];
 
 const DEFAULT_SETTINGS: AppSettings = {
   storeName: 'بقالة العزي',
@@ -45,6 +155,7 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<string[]>(INITIAL_SUGGESTIONS);
   const [itemPrices, setItemPrices] = useState<Record<string, number>>(INITIAL_PRICES);
   const [customers, setCustomers] = useState<string[]>(INITIAL_CUSTOMERS);
+  const [customerAccounts, setCustomerAccounts] = useState<CustomerAccount[]>(INITIAL_CUSTOMER_ACCOUNTS);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // UI Control States
@@ -54,6 +165,8 @@ export default function App() {
   const [isPhoneFrame, setIsPhoneFrame] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [previewModalOpen, setPreviewModalOpen] = useState<boolean>(false);
+  const [isExitModalOpen, setIsExitModalOpen] = useState<boolean>(false);
+  const [isAppExited, setIsAppExited] = useState<boolean>(false);
 
   // Confirmation Dialog State
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -94,6 +207,18 @@ export default function App() {
         const parsedCust = JSON.parse(savedCustomers);
         if (Array.isArray(parsedCust)) {
           setCustomers(Array.from(new Set([...INITIAL_CUSTOMERS, ...parsedCust])));
+        }
+      }
+
+      const savedCustomerAccounts = localStorage.getItem('azizi_customer_accounts');
+      if (savedCustomerAccounts) {
+        try {
+          const parsedAccounts = JSON.parse(savedCustomerAccounts);
+          if (Array.isArray(parsedAccounts) && parsedAccounts.length > 0) {
+            setCustomerAccounts(parsedAccounts);
+          }
+        } catch (e) {
+          console.error('Customer accounts parsing error:', e);
         }
       }
 
@@ -310,7 +435,148 @@ export default function App() {
 
     setHistory(nextHistory);
     persistData(nextHistory, undefined, undefined, undefined, invoiceNumber);
+
+    // If credit invoice, automatically record to customer ledger
+    if (paymentType === 'credit' && customerName.trim() && customerName.trim() !== 'عميل نقدي') {
+      const cName = customerName.trim();
+      const existing = customerAccounts.find((c) => c.name.toLowerCase() === cName.toLowerCase());
+      let nextAccounts: CustomerAccount[];
+
+      const tx: CustomerTransaction = {
+        id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        date: nowStrDate,
+        time: nowStrTime,
+        timestamp: Date.now(),
+        type: 'invoice_credit',
+        amount: grandTotal,
+        balanceAfter: (existing ? existing.balance : 0) + grandTotal,
+        invoiceNumber,
+        invoiceId: invoiceToSave.id,
+        notes: `فاتورة مبيعات آجل #${invoiceNumber} (${items.length} أصناف)`,
+      };
+
+      if (existing) {
+        nextAccounts = customerAccounts.map((c) => {
+          if (c.id !== existing.id) return c;
+          const newBal = c.balance + grandTotal;
+          return {
+            ...c,
+            balance: newBal,
+            transactions: [tx, ...c.transactions],
+          };
+        });
+      } else {
+        const newCust: CustomerAccount = {
+          id: `cust-${Date.now()}`,
+          name: cName,
+          balance: grandTotal,
+          createdAt: `${nowStrDate} ${nowStrTime}`,
+          transactions: [tx],
+        };
+        nextAccounts = [newCust, ...customerAccounts];
+      }
+      setCustomerAccounts(nextAccounts);
+      localStorage.setItem('azizi_customer_accounts', JSON.stringify(nextAccounts));
+    }
+
     sound.playSuccess();
+  };
+
+  // Customer Management Handlers
+  const handleAddCustomer = (newCust: { name: string; phone?: string; initialBalance?: number; notes?: string }) => {
+    const id = `cust-${Date.now()}`;
+    const nowStrDate = dateStr || new Date().toLocaleDateString('ar-YE');
+    const nowStrTime = timeStr || new Date().toLocaleTimeString('ar-YE');
+    const initBal = newCust.initialBalance || 0;
+    const initialTransactions: CustomerTransaction[] = initBal !== 0 ? [
+      {
+        id: `tx-${Date.now()}`,
+        date: nowStrDate,
+        time: nowStrTime,
+        timestamp: Date.now(),
+        type: 'initial_balance',
+        amount: initBal,
+        balanceAfter: initBal,
+        notes: 'رصيد افتتاحي سابق',
+      }
+    ] : [];
+
+    const account: CustomerAccount = {
+      id,
+      name: newCust.name.trim(),
+      phone: newCust.phone?.trim(),
+      balance: initBal,
+      notes: newCust.notes?.trim(),
+      createdAt: `${nowStrDate} ${nowStrTime}`,
+      transactions: initialTransactions,
+    };
+
+    const updated = [account, ...customerAccounts];
+    setCustomerAccounts(updated);
+    localStorage.setItem('azizi_customer_accounts', JSON.stringify(updated));
+
+    if (!customers.includes(account.name)) {
+      const nextCustomers = [account.name, ...customers];
+      setCustomers(nextCustomers);
+      localStorage.setItem('azizi_customers_list', JSON.stringify(nextCustomers));
+    }
+
+    showToast(`تمت إضافة العميل "${account.name}" بنجاح`);
+    sound.playSuccess();
+  };
+
+  const handleAddCustomerPayment = (customerId: string, amount: number, notes?: string) => {
+    const nowStrDate = dateStr || new Date().toLocaleDateString('ar-YE');
+    const nowStrTime = timeStr || new Date().toLocaleTimeString('ar-YE');
+
+    const updated = customerAccounts.map((c) => {
+      if (c.id !== customerId) return c;
+      const newBalance = c.balance - amount;
+      const tx: CustomerTransaction = {
+        id: `tx-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        date: nowStrDate,
+        time: nowStrTime,
+        timestamp: Date.now(),
+        type: 'payment',
+        amount: -amount,
+        balanceAfter: newBalance,
+        notes: notes?.trim() || 'سند قبض / سداد نقدي',
+      };
+      return {
+        ...c,
+        balance: newBalance,
+        transactions: [tx, ...c.transactions],
+      };
+    });
+
+    setCustomerAccounts(updated);
+    localStorage.setItem('azizi_customer_accounts', JSON.stringify(updated));
+    showToast(`تم تسجيل دفعة سداد بمبلغ ${amount} ${settings.currency}`);
+    sound.playSuccess();
+  };
+
+  const handleDeleteCustomer = (customerId: string) => {
+    const target = customerAccounts.find((c) => c.id === customerId);
+    setConfirmDialog({
+      isOpen: true,
+      title: 'حذف حساب العميل',
+      message: `هل أنت متأكد من حذف حساب العميل "${target?.name || ''}" نهائياً مع كافة سجلات عملياته؟`,
+      isDangerous: true,
+      onConfirm: () => {
+        const updated = customerAccounts.filter((c) => c.id !== customerId);
+        setCustomerAccounts(updated);
+        localStorage.setItem('azizi_customer_accounts', JSON.stringify(updated));
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+        showToast(`تم حذف حساب العميل بنجاح`);
+        sound.playTrash();
+      },
+    });
+  };
+
+  const handleSelectCustomerForInvoice = (name: string) => {
+    setCustomerName(name);
+    setActiveTab('pos');
+    showToast(`تم اختيار "${name}" للفاتورة`);
   };
 
   // Restore invoice from history to active editor
@@ -385,15 +651,15 @@ export default function App() {
     showToast(`تمت تهيئة فاتورة جديدة #${nextNum}`);
   };
 
-  // Reliable thermal print via isolated iframe (bypasses Android spooler 2-page split & DOM issues)
+  // Multi-tier thermal print: New Window -> Direct Spooler fallback
   const handlePrint = async () => {
     if (items.length === 0) {
       showToast('لا توجد أصناف لطباعتها', 'error');
       return;
     }
     recordCustomerName(customerName);
-    showToast('جاري إرسال الفاتورة للطباعة الحرارية...');
-    await printThermalReceiptViaIframe(currentInvoiceObj, {
+    showToast('جاري تحضير الطباعة الحرارية...');
+    await printThermalReceipt(currentInvoiceObj, {
       storeName: settings.storeName,
       storeSubtitle: settings.storeSubtitle,
       storePhone: settings.storePhone,
@@ -402,13 +668,35 @@ export default function App() {
     });
   };
 
-  // Direct Bluetooth ESC/POS Print via RawBT app
-  const handlePrintBluetooth = () => {
+  // Direct Bluetooth ESC/POS Print: Web Bluetooth -> RawBT Intent fallback
+  const handlePrintBluetooth = async () => {
     if (items.length === 0) {
       showToast('لا توجد أصناف لطباعتها', 'error');
       return;
     }
     recordCustomerName(customerName);
+
+    // If browser supports Web Bluetooth, try direct connection first
+    if (typeof navigator !== 'undefined' && 'bluetooth' in navigator) {
+      showToast('جاري البحث عن طابعة البلوتوث...');
+      try {
+        const success = await printDirectWebBluetooth(currentInvoiceObj, {
+          storeName: settings.storeName,
+          storeSubtitle: settings.storeSubtitle,
+          storePhone: settings.storePhone,
+          currency: settings.currency,
+        });
+        if (success) {
+          showToast('تمت الطباعة بنجاح عبر البلوتوث!');
+          sound.playSuccess();
+          return;
+        }
+      } catch (err) {
+        console.warn('Web Bluetooth cancelled or failed, falling back to RawBT:', err);
+      }
+    }
+
+    // Fallback: Send to RawBT Android application
     const ok = printViaRawBT(currentInvoiceObj, {
       storeName: settings.storeName,
       storeSubtitle: settings.storeSubtitle,
@@ -416,10 +704,13 @@ export default function App() {
       currency: settings.currency,
       thermalWidth: settings.thermalWidth,
     });
+
     if (ok) {
-      showToast('تم إرسال الفاتورة لطابعة البلوتوث (RawBT)');
+      showToast('تم فتح أمر الطباعة في تطبيق RawBT');
     } else {
-      showToast('تعذر الفتح التلقائي لطابعة البلوتوث');
+      // If mobile intent didn't launch, open preview hub so user can download PNG image or print standalone
+      setPreviewModalOpen(true);
+      showToast('اختر الطريقة المناسبة من مركز الطباعة');
     }
   };
 
@@ -469,24 +760,82 @@ export default function App() {
       });
   };
 
-  // Share directly via WhatsApp link
-  const handleShareWhatsApp = () => {
+  // Share invoice as IMAGE via WhatsApp (User requirement: مشاركة الفاتورة واتساب تكون صورة)
+  const handleShareWhatsApp = async () => {
     if (items.length === 0) {
       showToast('لا توجد أصناف لمشاركتها', 'error');
       return;
     }
-    const msg = generateWhatsAppMessage(
-      settings.storeName,
-      invoiceNumber,
-      customerName,
-      dateStr,
-      timeStr,
-      items,
-      grandTotal,
-      settings.currency
-    );
-    const waUrl = `https://wa.me/?text=${encodeURIComponent(msg)}`;
-    window.open(waUrl, '_blank');
+    recordCustomerName(customerName);
+    showToast('جاري تجهيز صورة الفاتورة للمشاركة عبر واتساب...');
+
+    try {
+      // 1. Render receipt image using HTML5 Canvas
+      const canvas = renderReceiptToCanvas(currentInvoiceObj, {
+        storeName: settings.storeName,
+        storeSubtitle: settings.storeSubtitle,
+        storePhone: settings.storePhone,
+        currency: settings.currency,
+        thermalWidth: settings.thermalWidth,
+      });
+
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, 'image/png')
+      );
+
+      if (!blob) {
+        showToast('تعذر توليد صورة الفاتورة', 'error');
+        return;
+      }
+
+      const fileName = `فاتورة_${invoiceNumber}_${customerName || 'نقدي'}.png`;
+      const file = new File([blob], fileName, { type: 'image/png' });
+
+      // 2. Try native file sharing (Web Share API Level 2 - Android Chrome & iOS)
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          title: `فاتورة #${invoiceNumber} - ${settings.storeName}`,
+          text: `فاتورة #${invoiceNumber} - ${settings.storeName}`,
+          files: [file],
+        });
+        showToast('تمت مشاركة صورة الفاتورة بنجاح!');
+        sound.playSuccess();
+        return;
+      }
+
+      // 3. Fallback for desktop/browsers without native file share:
+      // Download PNG file directly, copy image to clipboard, then open WhatsApp Web
+      await downloadReceiptImage(currentInvoiceObj, {
+        storeName: settings.storeName,
+        storeSubtitle: settings.storeSubtitle,
+        storePhone: settings.storePhone,
+        currency: settings.currency,
+        thermalWidth: settings.thermalWidth,
+      });
+
+      if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({ 'image/png': blob })
+          ]);
+          showToast('تم حفظ ونسخ صورة الفاتورة! يمكنك لصقها وإرسالها في واتساب');
+        } catch {
+          showToast('تم تنزيل صورة الفاتورة لجهازك لمشاركتها في واتساب');
+        }
+      } else {
+        showToast('تم تنزيل صورة الفاتورة لجهازك لمشاركتها في واتساب');
+      }
+
+      const waUrl = `https://wa.me/?text=${encodeURIComponent(`فاتورة #${invoiceNumber} - ${settings.storeName}`)}`;
+      window.open(waUrl, '_blank');
+      sound.playSuccess();
+    } catch (err) {
+      if ((err as Error)?.name !== 'AbortError') {
+        console.error('WhatsApp image share error:', err);
+        showToast('جاري فتح نافذة المعاينة لحفظ الصورة أو طباعتها', 'info');
+        setPreviewModalOpen(true);
+      }
+    }
   };
 
   // Export Data Backup (JSON)
@@ -499,6 +848,7 @@ export default function App() {
       history,
       suggestions,
       customers,
+      customerAccounts,
       itemPrices,
       lastInvNum: invoiceNumber,
       settings,
@@ -531,6 +881,7 @@ export default function App() {
         let nextSuggestions = suggestions;
         let nextCustomers = customers;
         let nextPrices = itemPrices;
+        let nextCustomerAccounts = customerAccounts;
 
         if (Array.isArray(data.history)) {
           nextHistory = data.history;
@@ -543,6 +894,11 @@ export default function App() {
         if (Array.isArray(data.customers)) {
           nextCustomers = Array.from(new Set([...customers, ...data.customers]));
           setCustomers(nextCustomers);
+        }
+        if (Array.isArray(data.customerAccounts)) {
+          nextCustomerAccounts = data.customerAccounts;
+          setCustomerAccounts(nextCustomerAccounts);
+          localStorage.setItem('azizi_customer_accounts', JSON.stringify(nextCustomerAccounts));
         }
         if (data.itemPrices && typeof data.itemPrices === 'object') {
           nextPrices = { ...itemPrices, ...data.itemPrices };
@@ -557,7 +913,7 @@ export default function App() {
 
         persistData(nextHistory, nextSuggestions, nextCustomers, nextPrices, data.lastInvNum);
         showToast(
-          `تم استعادة النسخة الاحتياطية! (${nextHistory.length} فاتورة، ${nextSuggestions.length} صنف)`
+          `تم استعادة النسخة الاحتياطية! (${nextHistory.length} فاتورة، ${nextCustomerAccounts.length} عميل)`
         );
       } catch (err) {
         console.error('Import error:', err);
@@ -580,6 +936,46 @@ export default function App() {
     }
   };
 
+  if (isAppExited) {
+    return (
+      <div
+        id="app-exited-screen"
+        className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-4 font-sans antialiased"
+        dir="rtl"
+      >
+        <div className="bg-slate-900 border border-slate-800 max-w-sm w-full rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+          <div className="w-20 h-20 mx-auto rounded-2xl overflow-hidden border-2 border-emerald-500/50 shadow-xl p-0.5 bg-slate-800">
+            <img
+              src="/app-logo.jpg"
+              alt={settings.storeName}
+              referrerPolicy="no-referrer"
+              className="w-full h-full object-cover rounded-xl"
+            />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-100">تم الخروج من التطبيق بنجاح</h2>
+            <p className="text-xs text-emerald-400 font-semibold mt-0.5">
+              {settings.storeName} - {settings.storeSubtitle}
+            </p>
+          </div>
+          <p className="text-xs text-slate-400 leading-relaxed bg-slate-800/60 p-3 rounded-2xl border border-slate-700/50">
+            تم حفظ كافة فواتيرك وسجلات حسابات العملاء بأمان في ذاكرة جهازك. يمكنك إغلاق التبويب الآن أو إعادة فتح التطبيق.
+          </p>
+          <button
+            id="btn-reopen-app"
+            onClick={() => {
+              sound.playSuccess();
+              setIsAppExited(false);
+            }}
+            className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white font-bold text-xs rounded-2xl shadow-md transition"
+          >
+            إعادة فتح تطبيق الكاشير
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`min-h-screen ${
@@ -599,6 +995,48 @@ export default function App() {
         {/* 1. Android System Status Bar (Clock, Punch hole camera, 5G, Battery) */}
         <AndroidStatusBar isDark={isDark} />
 
+        {/* Store Brand & Logo Header with Quick Exit */}
+        <div className="px-3 pt-2 pb-1.5 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between no-print">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl overflow-hidden shadow-xs border border-emerald-500/40 shrink-0 bg-slate-900">
+              <img
+                src="/app-logo.jpg"
+                alt={settings.storeName}
+                referrerPolicy="no-referrer"
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 tracking-tight leading-none">
+                  {settings.storeName}
+                </h1>
+                <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded-md">
+                  كاشير
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[170px] sm:max-w-xs mt-0.5">
+                {settings.storeSubtitle || 'للمواد الغذائية والاستهلاكية'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              id="btn-quick-exit"
+              onClick={() => {
+                sound.playTap();
+                setIsExitModalOpen(true);
+              }}
+              title="الخروج من التطبيق"
+              className="py-1 px-2 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/60 rounded-xl text-xs font-bold transition flex items-center gap-1 active:scale-95 border border-red-200 dark:border-red-900/50"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="text-[11px]">خروج</span>
+            </button>
+          </div>
+        </div>
+
         {/* 2. Top App Bar matching Screenshot 1 (Actions, Tools, Invoice # & Payment Pill) */}
         <div className="px-3 pt-1">
           <TopAppBar
@@ -616,6 +1054,7 @@ export default function App() {
             onToggleDark={handleToggleDark}
             onClearAll={handleClearCurrentInvoice}
             onOpenSettings={() => setActiveTab('settings')}
+            onExitApp={() => setIsExitModalOpen(true)}
           />
         </div>
 
@@ -673,6 +1112,18 @@ export default function App() {
             </>
           )}
 
+          {activeTab === 'customers' && (
+            <CustomersView
+              customers={customerAccounts}
+              onAddCustomer={handleAddCustomer}
+              onAddPayment={handleAddCustomerPayment}
+              onDeleteCustomer={handleDeleteCustomer}
+              onSelectCustomerForInvoice={handleSelectCustomerForInvoice}
+              currency={settings.currency}
+              isDark={isDark}
+            />
+          )}
+
           {activeTab === 'history' && (
             <HistoryView
               history={history}
@@ -681,7 +1132,7 @@ export default function App() {
               onClearAll={handleClearAllHistory}
               onPrintInvoice={async (inv) => {
                 showToast('جاري طباعة الفاتورة...');
-                await printThermalReceiptViaIframe(inv, {
+                await printThermalReceipt(inv, {
                   storeName: settings.storeName,
                   storeSubtitle: settings.storeSubtitle,
                   storePhone: settings.storePhone,
@@ -689,18 +1140,31 @@ export default function App() {
                   thermalWidth: settings.thermalWidth,
                 });
               }}
-              onShareInvoice={(inv) => {
-                const msg = generateWhatsAppMessage(
-                  settings.storeName,
-                  inv.number,
-                  inv.customer,
-                  inv.date,
-                  inv.time,
-                  inv.items,
-                  inv.total,
-                  settings.currency
-                );
-                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+              onShareInvoice={async (inv) => {
+                showToast('جاري تجهيز صورة الفاتورة للمشاركة عبر واتساب...');
+                try {
+                  const shared = await shareReceiptImage(inv, {
+                    storeName: settings.storeName,
+                    storeSubtitle: settings.storeSubtitle,
+                    storePhone: settings.storePhone,
+                    currency: settings.currency,
+                    thermalWidth: settings.thermalWidth,
+                  });
+                  if (shared) sound.playSuccess();
+                } catch {
+                  // fallback text if image share canceled
+                  const msg = generateWhatsAppMessage(
+                    settings.storeName,
+                    inv.number,
+                    inv.customer,
+                    inv.date,
+                    inv.time,
+                    inv.items,
+                    inv.total,
+                    settings.currency
+                  );
+                  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+                }
               }}
               currency={settings.currency}
               isDark={isDark}
@@ -758,6 +1222,7 @@ export default function App() {
           onTabChange={setActiveTab}
           historyCount={history.length}
           itemsCount={items.length}
+          debtorsCount={customerAccounts.filter((c) => c.balance > 0).length}
           isDark={isDark}
         />
       </div>
@@ -781,6 +1246,7 @@ export default function App() {
         storeSubtitle={settings.storeSubtitle}
         storePhone={settings.storePhone}
         currency={settings.currency}
+        thermalWidth={settings.thermalWidth}
         onPrint={() => {
           setPreviewModalOpen(false);
           handlePrint();
@@ -797,6 +1263,22 @@ export default function App() {
           setPreviewModalOpen(false);
           handleCopyText();
         }}
+      />
+
+      {/* Exit Confirmation Modal */}
+      <ExitConfirmModal
+        isOpen={isExitModalOpen}
+        onClose={() => setIsExitModalOpen(false)}
+        onConfirmExit={() => {
+          setIsExitModalOpen(false);
+          setIsAppExited(true);
+          try {
+            window.close();
+          } catch {
+            // In case browser blocks window.close
+          }
+        }}
+        storeName={settings.storeName}
       />
 
       {/* Android Material 3 Confirm Dialog */}
