@@ -20,49 +20,50 @@ export const ThermalPrintReceipt: React.FC<ThermalPrintReceiptProps> = ({
   width = '80mm',
 }) => {
   return (
-    <div id="thermal-print-area" className="hidden" dir="rtl">
-      {/* Header */}
-      <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '15px', marginBottom: '2px' }}>
+    <div
+      id="thermal-print-area"
+      dir="rtl"
+      className="hidden print:block"
+      style={{
+        width: width === '58mm' ? '54mm' : '76mm',
+        margin: '0 auto',
+        fontFamily: "'Courier New', Courier, monospace, 'Cairo', Tahoma, sans-serif",
+        fontSize: '13px',
+        lineHeight: 1.35,
+        color: '#000000',
+        backgroundColor: '#ffffff',
+      }}
+    >
+      {/* Store Header */}
+      <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '16px', marginBottom: '2px' }}>
         {storeName}
       </div>
-      <div style={{ textAlign: 'center', fontSize: '11px', marginBottom: '2px' }}>
+      <div style={{ textAlign: 'center', fontSize: '11px', marginBottom: '3px' }}>
         {storeSubtitle}
       </div>
       {storePhone && (
-        <div style={{ textAlign: 'center', fontSize: '10px', marginBottom: '4px' }}>
+        <div style={{ textAlign: 'center', fontSize: '11px', marginBottom: '3px' }}>
           هاتف: {storePhone}
         </div>
       )}
 
-      <div style={{ textAlign: 'center', fontSize: '11px' }}>
-        --------------------------------
-      </div>
+      <div style={{ borderTop: '1px dashed #000', margin: '4px 0' }}></div>
 
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          fontSize: '11px',
-          fontFamily: 'monospace',
-        }}
-      >
+      {/* Meta */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
         <span>فاتورة #: <strong>{invoice.number}</strong></span>
-        <span>{invoice.date} {invoice.time}</span>
+        <span>{invoice.time} {invoice.date}</span>
       </div>
-
-      <div style={{ marginTop: '2px', fontSize: '11px' }}>
+      <div style={{ fontSize: '12px', marginTop: '2px' }}>
         العميل: <strong>{invoice.customer || 'عميل نقدي'}</strong> ({invoice.paymentType === 'credit' ? 'آجل' : 'نقدي'})
       </div>
 
-      <div style={{ textAlign: 'center', fontSize: '11px' }}>
-        --------------------------------
-      </div>
+      <div style={{ borderTop: '1px dashed #000', margin: '4px 0' }}></div>
 
       {/* Items List */}
       <div>
         {invoice.items.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '4px 0', fontSize: '11px' }}>
+          <div style={{ textAlign: 'center', padding: '4px 0', fontSize: '12px' }}>
             -- لا توجد أصناف --
           </div>
         ) : (
@@ -74,20 +75,21 @@ export const ThermalPrintReceipt: React.FC<ThermalPrintReceiptProps> = ({
               <div
                 key={item.id || index}
                 style={{
-                  marginBottom: '3px',
-                  borderBottom: '1px dotted #666',
-                  paddingBottom: '2px',
-                  textAlign: 'right',
+                  padding: '3px 0',
+                  borderBottom: '1px dotted #888',
+                  pageBreakInside: 'avoid',
+                  breakInside: 'avoid',
                 }}
               >
-                <div style={{ fontWeight: 'bold', fontSize: '11px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '12px' }}>
                   {index + 1}. {item.name || 'صنف'}
                 </div>
                 <div
                   style={{
                     display: 'flex',
                     justifyContent: 'space-between',
-                    fontSize: '11px',
+                    alignItems: 'center',
+                    fontSize: '12px',
                     marginTop: '1px',
                   }}
                 >
@@ -102,18 +104,17 @@ export const ThermalPrintReceipt: React.FC<ThermalPrintReceiptProps> = ({
         )}
       </div>
 
-      {/* Summary */}
-      <div style={{ textAlign: 'center', fontSize: '11px' }}>
-        --------------------------------
-      </div>
+      <div style={{ borderTop: '1px dashed #000', margin: '4px 0' }}></div>
 
+      {/* Totals */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
+          alignItems: 'center',
           fontWeight: 'bold',
-          fontSize: '13px',
-          marginTop: '2px',
+          fontSize: '14px',
+          marginTop: '3px',
         }}
       >
         <span>الإجمالي الكلي:</span>
@@ -124,7 +125,8 @@ export const ThermalPrintReceipt: React.FC<ThermalPrintReceiptProps> = ({
         style={{
           display: 'flex',
           justifyContent: 'space-between',
-          fontSize: '11px',
+          alignItems: 'center',
+          fontSize: '12px',
           marginTop: '2px',
         }}
       >
@@ -132,12 +134,10 @@ export const ThermalPrintReceipt: React.FC<ThermalPrintReceiptProps> = ({
         <span>{invoice.items.length}</span>
       </div>
 
-      <div style={{ textAlign: 'center', fontSize: '11px' }}>
-        --------------------------------
-      </div>
+      <div style={{ borderTop: '1px dashed #000', margin: '4px 0' }}></div>
 
       {/* Footer */}
-      <div style={{ textAlign: 'center', fontSize: '10px', marginTop: '6px', lineHeight: '1.4' }}>
+      <div style={{ textAlign: 'center', fontSize: '11px', marginTop: '6px', lineHeight: 1.4 }}>
         شكراً لزيارتكم {storeName}<br />
         يرجى الاحتفاظ بالإيصال
       </div>

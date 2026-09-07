@@ -21,6 +21,7 @@ import {
   generateWhatsAppMessage,
 } from './utils/arabic';
 import { sound } from './utils/audio';
+import { printThermalReceiptViaIframe, printViaRawBT } from './utils/thermalPrinter';
 
 const DEFAULT_SETTINGS: AppSettings = {
   storeName: 'بقالة العزي',
@@ -384,14 +385,62 @@ export default function App() {
     showToast(`تمت تهيئة فاتورة جديدة #${nextNum}`);
   };
 
-  // Direct print via window.print()
-  const handlePrint = () => {
+  // Reliable thermal print via isolated iframe (bypasses Android spooler 2-page split & DOM issues)
+  const handlePrint = async () => {
     if (items.length === 0) {
       showToast('لا توجد أصناف لطباعتها', 'error');
       return;
     }
     recordCustomerName(customerName);
-    window.print();
+    showToast('جاري إرسال الفاتورة للطباعة الحرارية...');
+    await printThermalReceiptViaIframe(currentInvoiceObj, {
+      storeName: settings.storeName,
+      storeSubtitle: settings.storeSubtitle,
+      storePhone: settings.storePhone,
+      currency: settings.currency,
+      thermalWidth: settings.thermalWidth,
+    });
+  };
+
+  // Direct Bluetooth ESC/POS Print via RawBT app
+  const handlePrintBluetooth = () => {
+    if (items.length === 0) {
+      showToast('لا توجد أصناف لطباعتها', 'error');
+      return;
+    }
+    recordCustomerName(customerName);
+    const ok = printViaRawBT(currentInvoiceObj, {
+      storeName: settings.storeName,
+      storeSubtitle: settings.storeSubtitle,
+      storePhone: settings.storePhone,
+      currency: settings.currency,
+      thermalWidth: settings.thermalWidth,
+    });
+    if (ok) {
+      showToast('تم إرسال الفاتورة لطابعة البلوتوث (RawBT)');
+    } else {
+      showToast('تعذر الفتح التلقائي لطابعة البلوتوث');
+    }
+  };
+
+  // Clear current invoice items
+  const handleClearCurrentInvoice = () => {
+    if (items.length === 0) {
+      showToast('الفاتورة فارغة بالفعل', 'info');
+      return;
+    }
+    setConfirmDialog({
+      isOpen: true,
+      title: 'مسح محتويات الفاتورة',
+      message: 'هل تريد حذف جميع الأصناف المسجلة في هذه الفاتورة؟',
+      onConfirm: () => {
+        setItems([]);
+        setEditingIndex(null);
+        persistData([]);
+        setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+        showToast('تم تفريغ أصناف الفاتورة');
+      },
+    });
   };
 
   // Copy text for messaging / WhatsApp
@@ -550,21 +599,25 @@ export default function App() {
         {/* 1. Android System Status Bar (Clock, Punch hole camera, 5G, Battery) */}
         <AndroidStatusBar isDark={isDark} />
 
-        {/* 2. Material Top App Bar (Store Name, Invoice #, Quick Actions) */}
-        <TopAppBar
-          invoiceNumber={invoiceNumber}
-          dateStr={dateStr}
-          timeStr={timeStr}
-          isDark={isDark}
-          isPhoneFrame={isPhoneFrame}
-          onToggleDark={handleToggleDark}
-          onToggleFrame={() => setIsPhoneFrame(!isPhoneFrame)}
-          onPrint={handlePrint}
-          onCopy={handleCopyText}
-          onReset={handleResetInvoice}
-          onOpenPreview={() => setPreviewModalOpen(true)}
-          storeName={settings.storeName}
-        />
+        {/* 2. Top App Bar matching Screenshot 1 (Actions, Tools, Invoice # & Payment Pill) */}
+        <div className="px-3 pt-1">
+          <TopAppBar
+            invoiceNumber={invoiceNumber}
+            paymentType={paymentType}
+            onPaymentTypeChange={setPaymentType}
+            onPrint={handlePrint}
+            onSave={handleSaveInvoice}
+            onHistory={() => setActiveTab('history')}
+            onCopy={handleCopyText}
+            historyCount={history.length}
+            itemsCount={items.length}
+            onReset={handleResetInvoice}
+            isDark={isDark}
+            onToggleDark={handleToggleDark}
+            onClearAll={handleClearCurrentInvoice}
+            onOpenSettings={() => setActiveTab('settings')}
+          />
+        </div>
 
         {/* 3. Main Screen Viewport Body based on Active Navigation Tab */}
         <main className="flex-1 p-3 space-y-3 overflow-y-auto max-h-[calc(100vh-145px)]">
@@ -610,6 +663,8 @@ export default function App() {
                 onPaymentTypeChange={setPaymentType}
                 onSave={handleSaveInvoice}
                 onPrint={handlePrint}
+                onPrintBluetooth={handlePrintBluetooth}
+                onOpenPreview={() => setPreviewModalOpen(true)}
                 onShareWhatsApp={handleShareWhatsApp}
                 onReset={handleResetInvoice}
                 currency={settings.currency}
@@ -624,11 +679,15 @@ export default function App() {
               onRestore={handleRestoreInvoice}
               onDelete={handleDeleteHistoryInvoice}
               onClearAll={handleClearAllHistory}
-              onPrintInvoice={(inv) => {
-                setItems([...inv.items]);
-                setInvoiceNumber(inv.number);
-                setCustomerName(inv.customer);
-                setTimeout(() => window.print(), 100);
+              onPrintInvoice={async (inv) => {
+                showToast('جاري طباعة الفاتورة...');
+                await printThermalReceiptViaIframe(inv, {
+                  storeName: settings.storeName,
+                  storeSubtitle: settings.storeSubtitle,
+                  storePhone: settings.storePhone,
+                  currency: settings.currency,
+                  thermalWidth: settings.thermalWidth,
+                });
               }}
               onShareInvoice={(inv) => {
                 const msg = generateWhatsAppMessage(
@@ -724,7 +783,11 @@ export default function App() {
         currency={settings.currency}
         onPrint={() => {
           setPreviewModalOpen(false);
-          setTimeout(() => handlePrint(), 200);
+          handlePrint();
+        }}
+        onPrintBluetooth={() => {
+          setPreviewModalOpen(false);
+          handlePrintBluetooth();
         }}
         onShareWhatsApp={() => {
           setPreviewModalOpen(false);

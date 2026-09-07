@@ -1,6 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Plus, Check, UserCheck, Sparkles, Minus, Zap, Search } from 'lucide-react';
-import { getSmartMatches } from '../utils/arabic';
+import React, { useState, useEffect, useRef } from 'react';
+import { Zap, User, Plus, Check } from 'lucide-react';
 import { sound } from '../utils/audio';
 
 interface QuickEntryCardProps {
@@ -26,12 +25,10 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
   onAddItem,
   onCancelEdit,
   currency = 'ر.ي',
-  isDark = false,
 }) => {
   const [itemName, setItemName] = useState('');
   const [totalPrice, setTotalPrice] = useState('');
   const [quantity, setQuantity] = useState('1');
-
   const [showItemSuggestions, setShowItemSuggestions] = useState(false);
   const [showCustomerSuggestions, setShowCustomerSuggestions] = useState(false);
 
@@ -41,61 +38,83 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
   const customerContainerRef = useRef<HTMLDivElement>(null);
   const itemContainerRef = useRef<HTMLDivElement>(null);
 
-  // Sync when entering editing mode
+  // Sync editing item state
   useEffect(() => {
     if (editingItem) {
-      setItemName(editingItem.name || '');
-      setQuantity(editingItem.qty.toString() || '1');
-      setTotalPrice(editingItem.total.toString() || '');
-      totalInputRef.current?.focus();
-      totalInputRef.current?.select();
+      setItemName(editingItem.name);
+      setTotalPrice(editingItem.total.toString());
+      setQuantity(editingItem.qty.toString());
+      itemInputRef.current?.focus();
     }
   }, [editingItem]);
 
-  // Close suggestions when clicking outside
+  // Dismiss suggestions on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (
-        itemContainerRef.current &&
-        !itemContainerRef.current.contains(e.target as Node)
-      ) {
-        setShowItemSuggestions(false);
-      }
       if (
         customerContainerRef.current &&
         !customerContainerRef.current.contains(e.target as Node)
       ) {
         setShowCustomerSuggestions(false);
       }
+      if (
+        itemContainerRef.current &&
+        !itemContainerRef.current.contains(e.target as Node)
+      ) {
+        setShowItemSuggestions(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const matchedItems = getSmartMatches(suggestionsList, itemName).slice(0, 15);
-  const matchedCustomers = getSmartMatches(customersList, customerName).slice(0, 8);
+  // Filter customer suggestions
+  const matchedCustomers = customersList
+    .filter(
+      (c) =>
+        c.toLowerCase().includes(customerName.toLowerCase()) &&
+        c.trim() !== customerName.trim()
+    )
+    .slice(0, 5);
+
+  // Filter item suggestions
+  const matchedItems = suggestionsList
+    .filter(
+      (s) =>
+        s.toLowerCase().includes(itemName.toLowerCase()) &&
+        s.trim() !== itemName.trim()
+    )
+    .slice(0, 8);
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const tot = parseFloat(totalPrice) || 0;
-    const qty = parseFloat(quantity) || 1;
-    const name = itemName.trim() || 'صنف بدون اسم';
 
-    if (tot <= 0 && !itemName) {
+    const trimmedName = itemName.trim();
+    const parsedTotal = parseFloat(totalPrice);
+    const parsedQty = parseFloat(quantity) || 1;
+
+    if (!trimmedName) {
+      sound.playError();
+      itemInputRef.current?.focus();
+      return;
+    }
+
+    if (isNaN(parsedTotal) || parsedTotal <= 0) {
+      sound.playError();
       totalInputRef.current?.focus();
       return;
     }
 
-    sound.playBeep();
-    onAddItem(name, qty, tot);
+    onAddItem(trimmedName, parsedQty, parsedTotal);
 
-    // Reset input fields
+    // Reset inputs
     setItemName('');
     setTotalPrice('');
     setQuantity('1');
     setShowItemSuggestions(false);
 
-    totalInputRef.current?.focus();
+    // Re-focus on item name for super-fast cashier entry
+    itemInputRef.current?.focus();
   };
 
   const selectSuggestion = (name: string) => {
@@ -111,39 +130,11 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
     totalInputRef.current?.select();
   };
 
-  const handleQtyChange = (delta: number) => {
-    sound.playTap();
-    const current = parseFloat(quantity) || 1;
-    const next = Math.max(1, current + delta);
-    setQuantity(next.toString());
-
-    // If unit price exists, recalculate total
-    if (itemName && itemPrices[itemName]) {
-      setTotalPrice((itemPrices[itemName] * next).toString());
-    }
-  };
-
-  // Popular quick chips (first 6 items)
-  const quickChips = suggestionsList.slice(0, 6);
-
   return (
-    <div
-      id="quick-entry-card"
-      className="bg-white dark:bg-slate-800/90 rounded-2xl p-3 border border-slate-200 dark:border-slate-700 shadow-sm space-y-2.5 transition-colors"
-    >
-      {/* Customer Name Selector */}
+    <div className="space-y-2.5">
+      {/* 1. Customer Name Card matching screenshot */}
       <div className="relative" ref={customerContainerRef}>
-        <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-          <label htmlFor="customer-input" className="flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-            اسم العميل أو المحل:
-          </label>
-          <span className="text-[10px] bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-md">
-            {customerName && customerName !== 'عميل نقدي' ? 'عميل مسجل' : 'نقدي افتراضي'}
-          </span>
-        </div>
-
-        <div className="relative">
+        <div className="flex items-center rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 shadow-xs transition">
           <input
             id="customer-input"
             type="text"
@@ -153,12 +144,12 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
               setShowCustomerSuggestions(true);
             }}
             onFocus={() => setShowCustomerSuggestions(true)}
-            placeholder="اكتب اسم العميل (مثال: عميل نقدي، مطعم الفخامة)..."
+            placeholder="اسم العميل (مثال: صالح العزي)..."
             autoComplete="off"
-            className="w-full pl-3 pr-8 py-2 text-xs sm:text-sm font-semibold rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/60 text-slate-900 dark:text-slate-100 focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition"
+            className="w-full text-right text-sm font-semibold text-slate-800 dark:text-slate-100 bg-transparent outline-none"
           />
-          <div className="absolute right-2.5 top-2.5 text-slate-400">
-            <UserCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          <div className="text-slate-400 pl-1 shrink-0">
+            <User className="w-4 h-4 text-slate-500 dark:text-slate-400" />
           </div>
         </div>
 
@@ -177,52 +168,39 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
                 className="w-full text-right px-3 py-2 text-xs font-bold text-slate-800 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-900/40 flex items-center justify-between transition"
               >
                 <span>{cust}</span>
-                <span className="text-[10px] text-slate-400 font-normal">عميل معتمد</span>
+                <span className="text-[10px] text-slate-400 font-normal">عميل مسجل</span>
               </button>
             ))}
           </div>
         )}
       </div>
 
-      {/* Quick Entry Box */}
+      {/* 2. Fast Entry Card matching Screenshot 1 */}
       <div
-        className={`p-3 rounded-xl border transition-colors ${
-          editingItem
-            ? 'bg-amber-50/70 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700/50'
-            : 'bg-emerald-50/50 dark:bg-slate-700/40 border-emerald-200/80 dark:border-emerald-800/30'
-        }`}
+        id="quick-entry-card"
+        className="rounded-2xl p-3 border border-emerald-300 dark:border-emerald-700/60 bg-emerald-50/30 dark:bg-emerald-950/20 shadow-xs space-y-2.5"
       >
-        <div className="flex justify-between items-center text-xs font-bold mb-2">
-          <div className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300">
-            <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-            <span>{editingItem ? 'تعديل الصنف المحدد' : 'إدخال سريع للصنف'}</span>
+        {/* Header: إدخال سريع للأصناف: ⚡ and إكمال تلقائي ذكي */}
+        <div className="flex items-center justify-between text-xs select-none">
+          <div className="flex items-center gap-1 font-bold text-slate-800 dark:text-slate-100">
+            <span className="text-amber-500">⚡</span>
+            <span>إدخال سريع للأصناف:</span>
           </div>
-          {editingItem && (
-            <button
-              onClick={() => {
-                sound.playTap();
-                onCancelEdit();
-                setItemName('');
-                setTotalPrice('');
-                setQuantity('1');
-              }}
-              className="text-[11px] text-amber-700 dark:text-amber-300 underline font-semibold"
-            >
-              إلغاء التعديل
-            </button>
-          )}
+          <div className="text-[10px] text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-600 px-2 py-0.5 rounded-full bg-white/60 dark:bg-slate-800/60">
+            إكمال تلقائي ذكي
+          </div>
         </div>
 
-        {/* Inputs Grid */}
+        {/* 3 Inputs Grid: [الإجمالي (ر.ي)*]  [الكمية*]  [اسم الصنف] */}
         <form onSubmit={handleSubmit} className="space-y-2.5">
           <div className="grid grid-cols-12 gap-2">
-            {/* 1. Total Price Input */}
+            {/* Column 1 (Right): Total Price */}
             <div className="col-span-4">
               <label
                 htmlFor="quick-total-input"
-                className="block text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1"
+                className="block text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1 text-center"
               >
-                المبلغ ({currency}) *
+                الإجمالي ({currency})*
               </label>
               <input
                 id="quick-total-input"
@@ -234,51 +212,35 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
                 onChange={(e) => setTotalPrice(e.target.value)}
                 onFocus={(e) => e.target.select()}
                 placeholder="0.00"
-                className="w-full px-2 py-2 text-center text-sm font-black font-mono text-emerald-700 dark:text-emerald-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm"
+                className="w-full px-2 py-2 text-center text-sm font-black font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none shadow-xs"
               />
             </div>
 
-            {/* 2. Quantity Stepper */}
+            {/* Column 2 (Middle): Quantity */}
             <div className="col-span-3">
               <label
                 htmlFor="quick-qty-input"
                 className="block text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1 text-center"
               >
-                الكمية *
+                الكمية*
               </label>
-              <div className="flex items-center bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl overflow-hidden shadow-sm">
-                <button
-                  type="button"
-                  onClick={() => handleQtyChange(1)}
-                  className="px-1.5 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-bold active:scale-95"
-                >
-                  +
-                </button>
-                <input
-                  id="quick-qty-input"
-                  ref={qtyInputRef}
-                  type="number"
-                  inputMode="numeric"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  onFocus={(e) => e.target.select()}
-                  className="w-full text-center text-xs font-bold text-slate-800 dark:text-slate-100 outline-none bg-transparent"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleQtyChange(-1)}
-                  className="px-1.5 py-2 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-bold active:scale-95"
-                >
-                  -
-                </button>
-              </div>
+              <input
+                id="quick-qty-input"
+                ref={qtyInputRef}
+                type="number"
+                inputMode="numeric"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                className="w-full px-2 py-2 text-center text-sm font-black font-mono text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none shadow-xs"
+              />
             </div>
 
-            {/* 3. Item Name with suggestions */}
+            {/* Column 3 (Left): Item Name with autocomplete */}
             <div className="col-span-5 relative" ref={itemContainerRef}>
               <label
                 htmlFor="quick-name-input"
-                className="block text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1"
+                className="block text-[10px] font-bold text-slate-600 dark:text-slate-300 mb-1 text-right"
               >
                 اسم الصنف
               </label>
@@ -292,12 +254,12 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
                   setShowItemSuggestions(true);
                 }}
                 onFocus={() => setShowItemSuggestions(true)}
-                placeholder="ابحث أو اكتب الصنف..."
+                placeholder="ابحث أو اكتب اسم الصنف"
                 autoComplete="off"
-                className="w-full px-2.5 py-2 text-xs font-semibold text-slate-800 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm"
+                className="w-full px-2.5 py-2 text-xs font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none shadow-xs text-right"
               />
 
-              {/* Suggestions Popup */}
+              {/* Suggestions Dropdown */}
               {showItemSuggestions && matchedItems.length > 0 && (
                 <div className="absolute top-full right-0 left-0 mt-1 bg-white dark:bg-slate-800 border border-emerald-500/40 rounded-xl shadow-2xl z-40 max-h-52 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
                   {matchedItems.map((itemText) => {
@@ -325,42 +287,14 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
             </div>
           </div>
 
-          {/* Quick Item Chips for rapid touch POS */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 scrollbar-none">
-            <span className="text-[10px] text-slate-400 shrink-0 font-medium">سريع:</span>
-            {quickChips.map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                onClick={() => selectSuggestion(chip)}
-                className="text-[10px] px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-emerald-500 hover:text-emerald-600 whitespace-nowrap transition active:scale-95 shadow-2xs font-medium"
-              >
-                {chip.split(' ')[0]} {chip.split(' ')[1] || ''}
-              </button>
-            ))}
-          </div>
-
-          {/* Submit Button */}
+          {/* Full Width Button: + إضافة للصنف */}
           <button
-            id="btn-add-item"
+            id="btn-add-item-submit"
             type="submit"
-            className={`w-full py-2.5 rounded-xl font-bold text-xs sm:text-sm text-white shadow-md active:scale-98 transition flex items-center justify-center gap-1.5 ${
-              editingItem
-                ? 'bg-amber-600 hover:bg-amber-700 active:bg-amber-800'
-                : 'bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800'
-            }`}
+            className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs active:scale-[0.98] transition flex items-center justify-center gap-1.5"
           >
-            {editingItem ? (
-              <>
-                <Check className="w-4 h-4" />
-                <span>تحديث الصنف المختار</span>
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4" />
-                <span>إضافة الصنف للفاتورة</span>
-              </>
-            )}
+            {editingItem ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4 stroke-[2.5]" />}
+            <span>{editingItem ? 'تحديث الصنف' : 'إضافة للصنف'}</span>
           </button>
         </form>
       </div>

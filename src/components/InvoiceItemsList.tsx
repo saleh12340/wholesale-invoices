@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trash2, Edit3, ShoppingBag } from 'lucide-react';
+import { Trash2, ShoppingBag } from 'lucide-react';
 import { InvoiceItem } from '../types';
 import { formatNumber } from '../utils/arabic';
 import { sound } from '../utils/audio';
@@ -32,7 +32,7 @@ export const InvoiceItemsList: React.FC<InvoiceItemsListProps> = ({
           الفاتورة فارغة حالياً
         </h3>
         <p className="text-xs text-slate-400 dark:text-slate-500 max-w-xs mx-auto">
-          أدخل المبلغ واسم الصنف في البطاقة أعلاه، ثم اضغط على زر الإضافة للبدء في تجهيز الفاتورة.
+          أدخل اسم الصنف والكمية والإجمالي، ثم اضغط على زر "إضافة للصنف"
         </p>
       </div>
     );
@@ -43,90 +43,73 @@ export const InvoiceItemsList: React.FC<InvoiceItemsListProps> = ({
       id="invoice-items-table-container"
       className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden"
     >
-      {/* Table Header */}
-      <div className="bg-slate-100/80 dark:bg-slate-700/60 px-3 py-2 border-b border-slate-200 dark:border-slate-600 text-[11px] font-bold text-slate-600 dark:text-slate-300 grid grid-cols-12 gap-1 items-center select-none">
-        <div className="col-span-3 text-right">الإجمالي</div>
-        <div className="col-span-2 text-center">الكمية</div>
-        <div className="col-span-5 text-right pr-1">الصنف</div>
-        <div className="col-span-2 text-left">السعر الفردي</div>
+      {/* Table Header matching screenshot exactly: السعر | الكمية اسم الصنف | الإجمالي */}
+      <div className="bg-slate-100/90 dark:bg-slate-700/60 px-3 py-2 border-b border-slate-200 dark:border-slate-600 text-[12px] font-bold text-slate-700 dark:text-slate-200 flex items-center justify-between select-none">
+        <div className="w-1/4 text-right">الإجمالي</div>
+        <div className="w-1/2 text-center flex items-center justify-center gap-3">
+          <span>الكمية</span>
+          <span>اسم الصنف</span>
+        </div>
+        <div className="w-1/4 text-left">السعر</div>
       </div>
 
       {/* Items Rows */}
-      <div className="divide-y divide-slate-100 dark:divide-slate-700/60 max-h-[380px] overflow-y-auto">
+      <div className="divide-y divide-slate-100 dark:divide-slate-700/60 max-h-[420px] overflow-y-auto">
         {items.map((item, index) => {
           const isEditing = editingIndex === index;
-          const unitPrice = item.qty > 0 ? item.total / item.qty : 0;
+          const qty = item.qty || 1;
+          const unitPrice = qty > 0 ? (item.total / qty).toFixed(1) : '0.0';
 
           return (
             <div
               key={item.id || index}
               id={`item-row-${index}`}
-              className={`px-3 py-2.5 grid grid-cols-12 gap-1 items-center transition group ${
+              className={`px-3 py-2.5 flex items-center justify-between transition group ${
                 isEditing
                   ? 'bg-amber-50 dark:bg-amber-950/40 ring-1 ring-amber-400'
-                  : index % 2 === 0
-                  ? 'bg-white dark:bg-slate-800'
-                  : 'bg-slate-50/50 dark:bg-slate-800/50'
+                  : 'hover:bg-slate-50 dark:hover:bg-slate-700/40'
               }`}
             >
-              {/* Total Price */}
-              <div className="col-span-3 text-right font-mono font-bold text-xs sm:text-sm text-emerald-700 dark:text-emerald-400 truncate">
-                {formatNumber(item.total)}
-                <span className="text-[10px] font-normal font-sans mr-0.5 text-slate-400">
-                  {currency}
+              {/* Right: Total Price (e.g. 60, 000 in bold green) */}
+              <div className="w-1/4 text-right">
+                <span className="font-mono font-bold text-sm sm:text-base text-emerald-700 dark:text-emerald-400">
+                  {formatNumber(item.total)}
                 </span>
               </div>
 
-              {/* Quantity */}
-              <div className="col-span-2 text-center">
-                <span className="inline-block px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold font-mono">
-                  {item.qty}
-                </span>
-              </div>
-
-              {/* Item Name (clickable to edit) */}
+              {/* Middle: Qty and Item Name (e.g. 5      اكياس بر) */}
               <div
                 onClick={() => {
                   sound.playTap();
                   onEditItem(index);
                 }}
-                className="col-span-5 text-right pr-1 font-semibold text-xs text-slate-900 dark:text-slate-100 truncate cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-1"
+                className="w-1/2 flex items-center justify-center gap-3 cursor-pointer hover:text-emerald-600 dark:hover:text-emerald-400"
                 title="اضغط للتعديل"
               >
-                <span className="text-[10px] text-slate-400 font-mono w-3.5 shrink-0">
-                  {index + 1}.
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-100 text-xs sm:text-sm">
+                  {qty}
                 </span>
-                <span className="truncate">{item.name}</span>
+                <span className="font-semibold text-xs sm:text-sm text-slate-800 dark:text-slate-100 truncate max-w-[150px] sm:max-w-[200px]">
+                  {item.name}
+                </span>
               </div>
 
-              {/* Unit Price + Actions */}
-              <div className="col-span-2 flex items-center justify-between">
-                <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 truncate">
-                  {unitPrice > 0 ? unitPrice.toFixed(1) : '0'}
+              {/* Left: Unit Price + Red Trash Icon */}
+              <div className="w-1/4 flex items-center justify-start gap-2">
+                <button
+                  id={`btn-delete-item-${index}`}
+                  onClick={() => {
+                    sound.playTap();
+                    onDeleteItem(index);
+                  }}
+                  title="حذف الصنف"
+                  className="p-1 text-red-500 hover:text-red-700 active:scale-95 transition"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <span className="font-mono text-xs text-slate-700 dark:text-slate-300">
+                  {unitPrice}
                 </span>
-
-                <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100">
-                  <button
-                    onClick={() => {
-                      sound.playTap();
-                      onEditItem(index);
-                    }}
-                    title="تعديل"
-                    className="p-1 text-slate-400 hover:text-amber-600 rounded"
-                  >
-                    <Edit3 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      sound.playTap();
-                      onDeleteItem(index);
-                    }}
-                    title="حذف"
-                    className="p-1 text-slate-400 hover:text-red-500 rounded"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
               </div>
             </div>
           );

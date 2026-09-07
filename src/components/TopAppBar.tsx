@@ -1,137 +1,194 @@
 import React from 'react';
 import {
-  Store,
   Printer,
+  Save,
+  History,
   Copy,
   RotateCcw,
   Moon,
   Sun,
-  Smartphone,
-  Maximize2,
-  Share2
+  LogOut,
+  Download,
 } from 'lucide-react';
 import { sound } from '../utils/audio';
 
 interface TopAppBarProps {
   invoiceNumber: number;
-  dateStr: string;
-  timeStr: string;
-  isDark: boolean;
-  isPhoneFrame: boolean;
-  onToggleDark: () => void;
-  onToggleFrame: () => void;
+  paymentType: 'cash' | 'credit';
+  onPaymentTypeChange: (type: 'cash' | 'credit') => void;
   onPrint: () => void;
+  onSave: () => void;
+  onHistory: () => void;
   onCopy: () => void;
+  historyCount: number;
+  itemsCount: number;
   onReset: () => void;
-  onOpenPreview: () => void;
-  storeName?: string;
+  isDark: boolean;
+  onToggleDark: () => void;
+  onClearAll: () => void;
+  onOpenSettings: () => void;
 }
 
 export const TopAppBar: React.FC<TopAppBarProps> = ({
   invoiceNumber,
-  dateStr,
-  timeStr,
-  isDark,
-  isPhoneFrame,
-  onToggleDark,
-  onToggleFrame,
+  paymentType,
+  onPaymentTypeChange,
   onPrint,
+  onSave,
+  onHistory,
   onCopy,
+  historyCount,
+  itemsCount,
   onReset,
-  onOpenPreview,
-  storeName = 'بقالة العزي',
+  isDark,
+  onToggleDark,
+  onClearAll,
+  onOpenSettings,
 }) => {
   return (
-    <header
-      id="android-top-appbar"
-      className="no-print bg-emerald-700 dark:bg-emerald-900 text-white px-3.5 py-2.5 shadow-md flex items-center justify-between select-none"
-    >
-      {/* Store Branding & Invoice badge */}
-      <div className="flex items-center gap-2.5">
-        <div className="w-9 h-9 rounded-xl bg-emerald-600 dark:bg-emerald-800 border border-emerald-500/50 flex items-center justify-center text-amber-300 shadow-sm">
-          <Store className="w-5 h-5" />
-        </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-base font-black tracking-tight leading-tight">{storeName}</h1>
-            <span className="text-[11px] font-mono font-bold bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded-md shadow-sm">
-              #{invoiceNumber}
-            </span>
-          </div>
-          <div className="text-[10px] text-emerald-100 flex items-center gap-2 font-mono mt-0.5">
-            <span>{dateStr}</span>
-            <span>•</span>
-            <span>{timeStr}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Action Icons */}
-      <div className="flex items-center gap-1">
-        {/* Receipt Preview & Thermal Print */}
+    <header className="no-print space-y-2.5 pt-2 pb-1 select-none">
+      {/* 1. Main Action Buttons Row matching Screenshot 1 */}
+      <div className="grid grid-cols-4 gap-2">
+        {/* Print Button (Solid Green) */}
         <button
-          id="btn-thermal-preview"
+          id="btn-top-print"
           onClick={() => {
             sound.playTap();
-            onOpenPreview();
+            onPrint();
           }}
-          title="معاينة وطباعة حرارية"
-          className="p-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95 transition shadow-sm"
+          className="py-2 px-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-xl shadow-xs transition flex items-center justify-center gap-1.5"
         >
           <Printer className="w-4 h-4" />
+          <span>طباعة</span>
         </button>
 
-        {/* Copy for WhatsApp */}
+        {/* Save Button (White with Green Border) */}
         <button
-          id="btn-copy-receipt"
+          id="btn-top-save"
+          onClick={() => {
+            sound.playTap();
+            onSave();
+          }}
+          disabled={itemsCount === 0}
+          className="py-2 px-1 bg-white dark:bg-slate-800 border border-emerald-500 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 active:scale-95 font-bold text-xs sm:text-sm rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50"
+        >
+          <Save className="w-4 h-4" />
+          <span>حفظ</span>
+        </button>
+
+        {/* History Button (White with Blue Border & Count Badge) */}
+        <button
+          id="btn-top-history"
+          onClick={() => {
+            sound.playTap();
+            onHistory();
+          }}
+          className="py-2 px-1 bg-white dark:bg-slate-800 border border-blue-400 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 active:scale-95 font-bold text-xs sm:text-sm rounded-xl shadow-xs transition flex items-center justify-center gap-1.5"
+        >
+          <History className="w-4 h-4" />
+          <span>السجل</span>
+          {historyCount > 0 && (
+            <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] flex items-center justify-center font-bold">
+              {historyCount}
+            </span>
+          )}
+        </button>
+
+        {/* Copy Button (White with Amber Border) */}
+        <button
+          id="btn-top-copy"
           onClick={() => {
             sound.playTap();
             onCopy();
           }}
-          title="نسخ للواتساب"
-          className="p-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-600 text-emerald-100 active:scale-95 transition"
+          disabled={itemsCount === 0}
+          className="py-2 px-1 bg-white dark:bg-slate-800 border border-amber-400 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 active:scale-95 font-bold text-xs sm:text-sm rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50"
         >
           <Copy className="w-4 h-4" />
+          <span>نسخ</span>
         </button>
+      </div>
 
-        {/* New Invoice */}
+      {/* 2. Sub-Toolbar Icons Row matching Screenshot 1 */}
+      <div className="flex items-center justify-start gap-4 px-1 text-slate-600 dark:text-slate-300">
+        {/* Reset / New Invoice (Red Circular Arrow) */}
         <button
-          id="btn-reset-invoice"
+          id="btn-top-reset"
           onClick={() => {
             sound.playTap();
             onReset();
           }}
-          title="فاتورة جديدة"
-          className="p-2 rounded-xl bg-emerald-800/80 hover:bg-red-600 hover:text-white text-emerald-100 active:scale-95 transition"
+          title="فاتورة جديدة / إعادة تعيين"
+          className="p-1.5 text-red-500 hover:text-red-700 active:scale-90 transition rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30"
         >
           <RotateCcw className="w-4 h-4" />
         </button>
 
         {/* Dark Mode Toggle */}
         <button
-          id="btn-toggle-dark"
+          id="btn-top-dark-toggle"
           onClick={() => {
             sound.playTap();
             onToggleDark();
           }}
-          title={isDark ? 'الوضع النهاري' : 'الوضع الليلي'}
-          className="p-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-600 text-emerald-100 active:scale-95 transition"
+          title="تغيير المظهر (ليلي / نهاري)"
+          className="p-1.5 text-slate-700 dark:text-amber-300 hover:text-slate-900 active:scale-90 transition rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
         >
-          {isDark ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4" />}
+          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
         </button>
 
-        {/* Frame Toggle (Phone screen vs Fullscreen) */}
+        {/* Logout / Clear */}
         <button
-          id="btn-toggle-frame"
+          id="btn-top-clear-all"
           onClick={() => {
             sound.playTap();
-            onToggleFrame();
+            onClearAll();
           }}
-          title={isPhoneFrame ? 'عرض كاشير ملء الشاشة' : 'عرض إطار هاتف أندرويد'}
-          className="p-2 rounded-xl bg-emerald-800/80 hover:bg-emerald-600 text-emerald-100 active:scale-95 transition hidden sm:flex"
+          title="مسح وتفريغ"
+          className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-800 active:scale-90 transition rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
         >
-          {isPhoneFrame ? <Maximize2 className="w-4 h-4" /> : <Smartphone className="w-4 h-4" />}
+          <LogOut className="w-4 h-4" />
         </button>
+
+        {/* Backup / Settings */}
+        <button
+          id="btn-top-backup"
+          onClick={() => {
+            sound.playTap();
+            onOpenSettings();
+          }}
+          title="النسخ الاحتياطي والإعدادات"
+          className="p-1.5 text-slate-600 dark:text-slate-400 hover:text-slate-800 active:scale-90 transition rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+        >
+          <Download className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* 3. Invoice Number & Cash/Credit Pill matching Screenshot 1 */}
+      <div className="flex items-center justify-between px-1">
+        {/* Cash / Credit Toggle Pill */}
+        <button
+          id="btn-payment-type-pill"
+          type="button"
+          onClick={() => {
+            sound.playTap();
+            onPaymentTypeChange(paymentType === 'cash' ? 'credit' : 'cash');
+          }}
+          className={`px-3 py-1 rounded-full text-xs font-bold transition flex items-center gap-1.5 ${
+            paymentType === 'cash'
+              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300/80 dark:border-emerald-700'
+              : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300/80 dark:border-amber-700'
+          }`}
+        >
+          <span>{paymentType === 'cash' ? 'نقدي / آجل' : 'آجل (ذمة)'}</span>
+        </button>
+
+        {/* Invoice Number */}
+        <div className="text-right">
+          <span className="text-xs sm:text-sm font-bold text-emerald-700 dark:text-emerald-400">
+            رقم الفاتورة: #{invoiceNumber}
+          </span>
+        </div>
       </div>
     </header>
   );
