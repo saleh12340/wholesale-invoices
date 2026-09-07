@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#16a34a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#14532d;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#grad1)" />
+  <g filter="url(#shadow)" fill="#ffffff" transform="translate(64, 64) scale(0.75)">
+    <!-- Store Roof & Awning -->
+    <path d="M40 180 L256 60 L472 180 L440 220 L72 220 Z" fill="#facc15" />
+    <path d="M40 180 L80 180 L100 240 L60 240 Z" fill="#eab308" />
+    <path d="M120 180 L160 180 L180 240 L140 240 Z" fill="#facc15" />
+    <path d="M200 180 L240 180 L260 240 L220 240 Z" fill="#eab308" />
+    <path d="M280 180 L320 180 L340 240 L300 240 Z" fill="#facc15" />
+    <path d="M360 180 L400 180 L420 240 L380 240 Z" fill="#eab308" />
+    <!-- Store Body & POS Terminal -->
+    <rect x="72" y="220" width="368" height="230" rx="20" fill="#ffffff" />
+    <!-- Receipt Printer Slot -->
+    <rect x="110" y="260" width="160" height="22" rx="6" fill="#1e293b" />
+    <!-- Receipt Paper coming out -->
+    <path d="M125 240 L255 240 L255 180 L245 190 L235 180 L225 190 L215 180 L205 190 L195 180 L185 190 L175 180 L165 190 L155 180 L145 190 L135 180 L125 190 Z" fill="#f8fafc" stroke="#cbd5e1" stroke-width="2"/>
+    <!-- Receipt Lines -->
+    <line x1="140" y1="198" x2="240" y2="198" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
+    <line x1="140" y1="212" x2="220" y2="212" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
+    <line x1="140" y1="226" x2="235" y2="226" stroke="#16a34a" stroke-width="4" stroke-linecap="round"/>
+    <!-- Cash Register Screen & Buttons -->
+    <rect x="290" y="260" width="120" height="85" rx="8" fill="#0f172a" />
+    <text x="350" y="310" fill="#4ade80" font-family="monospace" font-size="24" font-weight="bold" text-anchor="middle">1001#</text>
+    <!-- Keypad -->
+    <circle cx="310" cy="375" r="10" fill="#e2e8f0"/>
+    <circle cx="350" cy="375" r="10" fill="#e2e8f0"/>
+    <circle cx="390" cy="375" r="10" fill="#e2e8f0"/>
+    <circle cx="310" cy="410" r="10" fill="#e2e8f0"/>
+    <circle cx="350" cy="410" r="10" fill="#e2e8f0"/>
+    <circle cx="390" cy="410" r="10" fill="#22c55e"/>
+    <!-- Grocery Basket Outline on Left -->
+    <path d="M120 320 L240 320 L225 415 L135 415 Z" fill="#f0fdf4" stroke="#16a34a" stroke-width="8" stroke-linejoin="round"/>
+    <line x1="145" y1="350" x2="215" y2="350" stroke="#16a34a" stroke-width="5"/>
+    <line x1="150" y1="380" x2="210" y2="380" stroke="#16a34a" stroke-width="5"/>
+    <path d="M140 320 C140 280 220 280 220 320" fill="none" stroke="#eab308" stroke-width="8" stroke-linecap="round"/>
+  </g>
+</svg>

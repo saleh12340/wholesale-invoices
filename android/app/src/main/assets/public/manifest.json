@@ -1,0 +1,22 @@
+{
+  "id": "/",
+  "name": "بقالة العزي - نظام الفواتير المحسّن",
+  "short_name": "بقالة العزي",
+  "description": "تطبيق واجهات أندرويد متكامل لنقاط البيع والفواتير وإدارة المبيعات والسجل مع الطباعة الحرارية",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#15803d",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
