@@ -27,22 +27,14 @@
 }
 
 @media print {
-  /* Completely hide all app shell elements, frames, status bar, and navigation */
-  #app-viewport-container,
-  #app-main-container,
-  #android-status-bar,
-  #android-bottom-navigation,
-  #top-action-bar,
-  #quick-entry-card,
-  #empty-invoice-state,
-  .no-print,
-  button {
-    display: none !important;
-  }
-
-  html, body {
-    width: 80mm !important;
-    max-width: 80mm !important;
+  /* Reset document and wrappers so flex centering doesn't clip receipts on Android */
+  html, body, #root, #root > div {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: auto !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
@@ -52,16 +44,34 @@
     line-height: 1.35 !important;
     direction: rtl !important;
     overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Completely hide all app shell elements, frames, status bar, and navigation */
+  #app-viewport-container,
+  #app-main-container,
+  #android-status-bar,
+  #android-bottom-navigation,
+  #top-action-bar,
+  #quick-entry-card,
+  #empty-invoice-state,
+  #app-exited-screen,
+  .no-print,
+  dialog,
+  button {
+    display: none !important;
   }
 
   #thermal-print-area,
   #thermal-print-direct-container {
     display: block !important;
     visibility: visible !important;
+    position: static !important;
     width: 76mm !important;
-    max-width: 76mm !important;
+    max-width: 80mm !important;
     margin: 0 auto !important;
-    padding: 2mm 1mm !important;
+    padding: 3mm 1mm !important;
     background: #ffffff !important;
     color: #000000 !important;
     page-break-inside: avoid !important;

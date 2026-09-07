@@ -21,6 +21,7 @@ import {
   INITIAL_PRICES,
   INITIAL_CUSTOMERS,
   generateWhatsAppMessage,
+  parseArabicNumber,
 } from './utils/arabic';
 import { sound } from './utils/audio';
 import { printThermalReceipt, printThermalReceiptViaNewWindow, printViaRawBT } from './utils/thermalPrinter';
@@ -185,6 +186,7 @@ export default function App() {
   // Real-time Clock
   const [dateStr, setDateStr] = useState<string>('');
   const [timeStr, setTimeStr] = useState<string>('');
+  const [activePrintInvoice, setActivePrintInvoice] = useState<Invoice | null>(null);
 
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -192,7 +194,52 @@ export default function App() {
   useEffect(() => {
     try {
       const savedHistory = localStorage.getItem('azizi_invoice_history');
-      if (savedHistory) setHistory(JSON.parse(savedHistory));
+      if (savedHistory) {
+        try {
+          const rawHistory: Invoice[] = JSON.parse(savedHistory);
+          if (Array.isArray(rawHistory)) {
+            // Sanitize history and repair any corrupted totals or concatenated strings
+            const repairedHistory = rawHistory.map((inv) => {
+              const cleanItems = (inv.items || []).map((it) => {
+                const q = Math.max(0.001, Number(parseArabicNumber(it.qty)) || 1);
+                let t = Math.round((Number(parseArabicNumber(it.total)) || 0) * 100) / 100;
+                // If corrupted by concatenation (greater than 10 million for a grocery item)
+                if (t > 10000000) {
+                  const u = Number(parseArabicNumber(it.unitPrice));
+                  if (u > 0 && u < 1000000) {
+                    t = Math.round(u * q * 100) / 100;
+                  } else {
+                    t = 0;
+                  }
+                }
+                const unitPrice = q > 0 ? Math.round((t / q) * 100) / 100 : 0;
+                return {
+                  ...it,
+                  qty: q,
+                  total: t,
+                  unitPrice,
+                };
+              });
+
+              // Accurately sum clean item totals
+              const sumItems = cleanItems.reduce((acc, it) => acc + (Number(it.total) || 0), 0);
+              const totalVal = sumItems > 0 ? Math.round(sumItems * 100) / 100 : Math.round((Number(parseArabicNumber(inv.total)) || 0) * 100) / 100;
+              const safeTotal = totalVal > 100000000 ? 0 : totalVal;
+
+              return {
+                ...inv,
+                items: cleanItems,
+                total: safeTotal,
+              };
+            });
+
+            setHistory(repairedHistory);
+            localStorage.setItem('azizi_invoice_history', JSON.stringify(repairedHistory));
+          }
+        } catch (parseErr) {
+          console.error('History parse/repair error:', parseErr);
+        }
+      }
 
       const savedSuggestions = localStorage.getItem('azizi_items_suggestions');
       if (savedSuggestions) {
@@ -313,8 +360,112 @@ export default function App() {
     }, 2800);
   };
 
-  // Grand Total calculation
-  const grandTotal = items.reduce((sum, item) => sum + (item.total || 0), 0);
+  // Double-tap phone hardware / system back button detection (User requirement: عند الخروج بزر الهاتف نفسه بالضغط عليه مرتين يظهر تأكيد الخروج)
+  const lastBackPressTimeRef = useRef<number>(0);
+  const backPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const stateRef = useRef({
+    previewModalOpen,
+    confirmDialogOpen: confirmDialog.isOpen,
+    isExitModalOpen,
+    activeTab,
+  });
+
+  useEffect(() => {
+    stateRef.current = {
+      previewModalOpen,
+      confirmDialogOpen: confirmDialog.isOpen,
+      isExitModalOpen,
+      activeTab,
+    };
+  }, [previewModalOpen, confirmDialog.isOpen, isExitModalOpen, activeTab]);
+
+  // Handler for device back button (Physical phone back button, Android gesture, or on-screen back button)
+  const handleDeviceBackButton = () => {
+    // 1. If Preview modal is open, close it
+    if (stateRef.current.previewModalOpen) {
+      setPreviewModalOpen(false);
+      return;
+    }
+    // 2. If Confirm dialog is open, close it
+    if (stateRef.current.confirmDialogOpen) {
+      setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
+      return;
+    }
+    // 3. If Exit modal is already open, close it
+    if (stateRef.current.isExitModalOpen) {
+      setIsExitModalOpen(false);
+      return;
+    }
+
+    // 4. Double-tap detection for application exit
+    const now = Date.now();
+    const elapsed = now - lastBackPressTimeRef.current;
+
+    if (elapsed > 0 && elapsed < 2000) {
+      // Second tap within 2 seconds: Open exit confirmation modal!
+      lastBackPressTimeRef.current = 0;
+      if (backPressTimerRef.current) {
+        clearTimeout(backPressTimerRef.current);
+      }
+      sound.playTap();
+      setIsExitModalOpen(true);
+    } else {
+      // First tap: prompt user to tap once more to confirm exit
+      lastBackPressTimeRef.current = now;
+      sound.playTap();
+      showToast('اضغط زر الرجوع مرة أخرى لتأكيد الخروج من التطبيق', 'info');
+
+      if (backPressTimerRef.current) {
+        clearTimeout(backPressTimerRef.current);
+      }
+      backPressTimerRef.current = setTimeout(() => {
+        lastBackPressTimeRef.current = 0;
+      }, 2000);
+    }
+  };
+
+  // Hardware Back Button listener via HTML5 History popstate & keyboard Escape
+  useEffect(() => {
+    try {
+      window.history.pushState({ app: 'al-ezzi-pos' }, '', window.location.href);
+    } catch {
+      // ignore
+    }
+
+    const onPopState = () => {
+      try {
+        window.history.pushState({ app: 'al-ezzi-pos' }, '', window.location.href);
+      } catch {
+        // ignore
+      }
+      handleDeviceBackButton();
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' || e.key === 'GoBack' || e.keyCode === 27) {
+        e.preventDefault();
+        handleDeviceBackButton();
+      }
+    };
+
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('keydown', onKeyDown);
+      if (backPressTimerRef.current) {
+        clearTimeout(backPressTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Grand Total calculation (Strict numerical addition preventing any string concatenation)
+  const grandTotal = items.reduce((sum, item) => {
+    const itemTotal = Number(parseArabicNumber(item.total)) || 0;
+    return Math.round((sum + itemTotal) * 100) / 100;
+  }, 0);
 
   // Construct active invoice object for preview and thermal printing
   const currentInvoiceObj: Invoice = {
@@ -331,15 +482,17 @@ export default function App() {
 
   // Add or Update item in active invoice
   const handleAddItem = (name: string, qty: number, total: number) => {
-    const unitPrice = qty > 0 ? total / qty : 0;
+    const cleanQty = Math.max(0.001, Number(parseArabicNumber(qty)) || 1);
+    const cleanTotal = Math.round((Number(parseArabicNumber(total)) || 0) * 100) / 100;
+    const unitPrice = cleanQty > 0 ? Math.round((cleanTotal / cleanQty) * 100) / 100 : 0;
 
     if (editingIndex !== null && editingIndex >= 0 && editingIndex < items.length) {
       const updated = [...items];
       updated[editingIndex] = {
         ...updated[editingIndex],
         name,
-        qty,
-        total,
+        qty: cleanQty,
+        total: cleanTotal,
         unitPrice,
       };
       setItems(updated);
@@ -349,8 +502,8 @@ export default function App() {
       const newItem: InvoiceItem = {
         id: `item-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         name,
-        qty,
-        total,
+        qty: cleanQty,
+        total: cleanTotal,
         unitPrice,
       };
       setItems((prev) => [...prev, newItem]);
@@ -365,7 +518,7 @@ export default function App() {
         nextSuggestions = [cleanName, ...suggestions];
         setSuggestions(nextSuggestions);
       }
-      const nextPrices = { ...itemPrices, [cleanName]: unitPrice > 0 ? unitPrice : total };
+      const nextPrices = { ...itemPrices, [cleanName]: unitPrice > 0 ? unitPrice : cleanTotal };
       setItemPrices(nextPrices);
       persistData(undefined, nextSuggestions, undefined, nextPrices);
     }
@@ -579,9 +732,26 @@ export default function App() {
     showToast(`تم اختيار "${name}" للفاتورة`);
   };
 
-  // Restore invoice from history to active editor
+  // Restore invoice from history to active editor (strictly sanitized)
   const handleRestoreInvoice = (inv: Invoice) => {
-    setItems([...inv.items]);
+    const cleanItems = (inv.items || []).map((it) => {
+      const q = Math.max(0.001, Number(parseArabicNumber(it.qty)) || 1);
+      let t = Math.round((Number(parseArabicNumber(it.total)) || 0) * 100) / 100;
+      if (t > 10000000) {
+        const u = Number(parseArabicNumber(it.unitPrice));
+        if (u > 0 && u < 1000000) t = Math.round(u * q * 100) / 100;
+        else t = 0;
+      }
+      const unitPrice = q > 0 ? Math.round((t / q) * 100) / 100 : 0;
+      return {
+        ...it,
+        qty: q,
+        total: t,
+        unitPrice,
+      };
+    });
+
+    setItems(cleanItems);
     setInvoiceNumber(inv.number);
     setCustomerName(inv.customer || 'عميل نقدي');
     setPaymentType(inv.paymentType || 'cash');
@@ -651,21 +821,25 @@ export default function App() {
     showToast(`تمت تهيئة فاتورة جديدة #${nextNum}`);
   };
 
-  // Multi-tier thermal print: New Window -> Direct Spooler fallback
-  const handlePrint = async () => {
-    if (items.length === 0) {
+  // Multi-tier thermal print: Direct Spooler with instant print dialog
+  const handlePrint = (targetInv?: Invoice) => {
+    const inv = targetInv || currentInvoiceObj;
+    if (!inv || inv.items.length === 0) {
       showToast('لا توجد أصناف لطباعتها', 'error');
       return;
     }
-    recordCustomerName(customerName);
-    showToast('جاري تحضير الطباعة الحرارية...');
-    await printThermalReceipt(currentInvoiceObj, {
-      storeName: settings.storeName,
-      storeSubtitle: settings.storeSubtitle,
-      storePhone: settings.storePhone,
-      currency: settings.currency,
-      thermalWidth: settings.thermalWidth,
-    });
+    if (!targetInv) recordCustomerName(customerName);
+    setActivePrintInvoice(inv);
+    showToast('جاري بدء الطباعة الحرارية...');
+    setTimeout(() => {
+      printThermalReceipt(inv, {
+        storeName: settings.storeName,
+        storeSubtitle: settings.storeSubtitle,
+        storePhone: settings.storePhone,
+        currency: settings.currency,
+        thermalWidth: settings.thermalWidth,
+      });
+    }, 50);
   };
 
   // Direct Bluetooth ESC/POS Print: Web Bluetooth -> RawBT Intent fallback
@@ -760,18 +934,18 @@ export default function App() {
       });
   };
 
-  // Share invoice as IMAGE via WhatsApp (User requirement: مشاركة الفاتورة واتساب تكون صورة)
-  const handleShareWhatsApp = async () => {
-    if (items.length === 0) {
+  // Share invoice as IMAGE via WhatsApp (User requirement: مشاركة الفاتورة واتساب تكون صورة وليست نص)
+  const handleShareWhatsApp = async (targetInv?: Invoice) => {
+    const inv = targetInv || currentInvoiceObj;
+    if (!inv || inv.items.length === 0) {
       showToast('لا توجد أصناف لمشاركتها', 'error');
       return;
     }
-    recordCustomerName(customerName);
+    if (!targetInv) recordCustomerName(customerName);
     showToast('جاري تجهيز صورة الفاتورة للمشاركة عبر واتساب...');
 
     try {
-      // 1. Render receipt image using HTML5 Canvas
-      const canvas = renderReceiptToCanvas(currentInvoiceObj, {
+      const res = await shareReceiptImage(inv, {
         storeName: settings.storeName,
         storeSubtitle: settings.storeSubtitle,
         storePhone: settings.storePhone,
@@ -779,60 +953,23 @@ export default function App() {
         thermalWidth: settings.thermalWidth,
       });
 
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, 'image/png')
-      );
-
-      if (!blob) {
-        showToast('تعذر توليد صورة الفاتورة', 'error');
-        return;
-      }
-
-      const fileName = `فاتورة_${invoiceNumber}_${customerName || 'نقدي'}.png`;
-      const file = new File([blob], fileName, { type: 'image/png' });
-
-      // 2. Try native file sharing (Web Share API Level 2 - Android Chrome & iOS)
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: `فاتورة #${invoiceNumber} - ${settings.storeName}`,
-          text: `فاتورة #${invoiceNumber} - ${settings.storeName}`,
-          files: [file],
-        });
-        showToast('تمت مشاركة صورة الفاتورة بنجاح!');
+      if (res.success) {
         sound.playSuccess();
-        return;
-      }
-
-      // 3. Fallback for desktop/browsers without native file share:
-      // Download PNG file directly, copy image to clipboard, then open WhatsApp Web
-      await downloadReceiptImage(currentInvoiceObj, {
-        storeName: settings.storeName,
-        storeSubtitle: settings.storeSubtitle,
-        storePhone: settings.storePhone,
-        currency: settings.currency,
-        thermalWidth: settings.thermalWidth,
-      });
-
-      if (navigator.clipboard && typeof ClipboardItem !== 'undefined') {
-        try {
-          await navigator.clipboard.write([
-            new ClipboardItem({ 'image/png': blob })
-          ]);
-          showToast('تم حفظ ونسخ صورة الفاتورة! يمكنك لصقها وإرسالها في واتساب');
-        } catch {
-          showToast('تم تنزيل صورة الفاتورة لجهازك لمشاركتها في واتساب');
+        if (res.method === 'web-share') {
+          showToast('تمت مشاركة صورة الفاتورة عبر واتساب بنجاح!');
+        } else if (res.method === 'copied') {
+          showToast('تم حفظ ونسخ صورة الفاتورة! يمكنك لصقها وإرسالها كصورة في واتساب');
+        } else {
+          showToast('تم حفظ صورة الفاتورة في الاستوديو لمشاركتها كصورة عبر واتساب');
         }
       } else {
-        showToast('تم تنزيل صورة الفاتورة لجهازك لمشاركتها في واتساب');
+        showToast('جاري فتح مركز المعاينة لحفظ ومشاركة صورة الفاتورة', 'info');
+        setPreviewModalOpen(true);
       }
-
-      const waUrl = `https://wa.me/?text=${encodeURIComponent(`فاتورة #${invoiceNumber} - ${settings.storeName}`)}`;
-      window.open(waUrl, '_blank');
-      sound.playSuccess();
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError') {
         console.error('WhatsApp image share error:', err);
-        showToast('جاري فتح نافذة المعاينة لحفظ الصورة أو طباعتها', 'info');
+        showToast('جاري فتح نافذة المعاينة لمشاركة صورة الفاتورة', 'info');
         setPreviewModalOpen(true);
       }
     }
@@ -1130,41 +1267,11 @@ export default function App() {
               onRestore={handleRestoreInvoice}
               onDelete={handleDeleteHistoryInvoice}
               onClearAll={handleClearAllHistory}
-              onPrintInvoice={async (inv) => {
-                showToast('جاري طباعة الفاتورة...');
-                await printThermalReceipt(inv, {
-                  storeName: settings.storeName,
-                  storeSubtitle: settings.storeSubtitle,
-                  storePhone: settings.storePhone,
-                  currency: settings.currency,
-                  thermalWidth: settings.thermalWidth,
-                });
+              onPrintInvoice={(inv) => {
+                handlePrint(inv);
               }}
-              onShareInvoice={async (inv) => {
-                showToast('جاري تجهيز صورة الفاتورة للمشاركة عبر واتساب...');
-                try {
-                  const shared = await shareReceiptImage(inv, {
-                    storeName: settings.storeName,
-                    storeSubtitle: settings.storeSubtitle,
-                    storePhone: settings.storePhone,
-                    currency: settings.currency,
-                    thermalWidth: settings.thermalWidth,
-                  });
-                  if (shared) sound.playSuccess();
-                } catch {
-                  // fallback text if image share canceled
-                  const msg = generateWhatsAppMessage(
-                    settings.storeName,
-                    inv.number,
-                    inv.customer,
-                    inv.date,
-                    inv.time,
-                    inv.items,
-                    inv.total,
-                    settings.currency
-                  );
-                  window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-                }
+              onShareInvoice={(inv) => {
+                handleShareWhatsApp(inv);
               }}
               currency={settings.currency}
               isDark={isDark}
@@ -1216,7 +1323,7 @@ export default function App() {
           )}
         </main>
 
-        {/* 4. Android Bottom Navigation Bar (Tabs + Gesture Pill) */}
+        {/* 4. Android Bottom Navigation Bar (Tabs + 3-Button System Bar) */}
         <AndroidNavBar
           activeTab={activeTab}
           onTabChange={setActiveTab}
@@ -1224,12 +1331,13 @@ export default function App() {
           itemsCount={items.length}
           debtorsCount={customerAccounts.filter((c) => c.balance > 0).length}
           isDark={isDark}
+          onDeviceBack={handleDeviceBackButton}
         />
       </div>
 
       {/* Pure Text Thermal Receipt DOM for @media print (Physical Bluetooth/USB 80mm Printer) */}
       <ThermalPrintReceipt
-        invoice={currentInvoiceObj}
+        invoice={activePrintInvoice || currentInvoiceObj}
         storeName={settings.storeName}
         storeSubtitle={settings.storeSubtitle}
         storePhone={settings.storePhone}

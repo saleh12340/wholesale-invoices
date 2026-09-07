@@ -91,17 +91,25 @@ export const QuickEntryCard: React.FC<QuickEntryCardProps> = ({
     if (e) e.preventDefault();
 
     const trimmedName = itemName.trim();
-    const parsedQty = parseArabicNumber(quantity) || 1;
-    let parsedTotal = parseArabicNumber(totalPrice);
+    const parsedQty = Math.max(0.001, Number(parseArabicNumber(quantity)) || 1);
+    let parsedTotal = Math.round((Number(parseArabicNumber(totalPrice)) || 0) * 100) / 100;
 
     // If total price was not typed, check if the item has a known unit price in the catalog
     if (parsedTotal <= 0 && trimmedName && itemPrices[trimmedName]) {
-      parsedTotal = itemPrices[trimmedName] * parsedQty;
+      const unit = Number(parseArabicNumber(itemPrices[trimmedName])) || 0;
+      parsedTotal = Math.round(unit * parsedQty * 100) / 100;
     }
 
     if (!trimmedName) {
       sound.playError();
       itemInputRef.current?.focus();
+      return;
+    }
+
+    // Guard against accidental barcode scanning into the price box (e.g. 62910482019)
+    if (parsedTotal > 10000000) {
+      sound.playError();
+      totalInputRef.current?.focus();
       return;
     }
 

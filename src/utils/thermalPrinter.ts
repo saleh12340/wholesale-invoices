@@ -241,9 +241,50 @@ function formatTwoColumns(left: string, right: string, width: number): string {
 }
 
 /**
- * 1. Open receipt in a standalone printable window/tab.
- * This is 100% reliable on Android mobile browsers (Chrome, Samsung Internet)
- * because it bypasses iframe sandboxes and security blocks.
+ * 1. Direct Window Print Spooler
+ * Uses window.print() directly with dedicated @media print CSS for thermal paper.
+ * No popups or window.open required, preventing mobile browser blockers!
+ */
+export function printThermalReceiptDirect(
+  invoice: Invoice,
+  settings: ThermalSettings
+): boolean {
+  try {
+    let container = document.getElementById('thermal-print-direct-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'thermal-print-direct-container';
+      document.body.appendChild(container);
+    }
+
+    const htmlContent = generateReceiptHtml(invoice, settings);
+    const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+    const bodyInner = bodyMatch ? bodyMatch[1] : htmlContent;
+
+    container.innerHTML = bodyInner;
+    container.style.display = 'block';
+
+    // Synchronously or with microtask trigger window.print
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        if (container) {
+          container.innerHTML = '';
+          container.style.display = 'none';
+        }
+      }, 1000);
+    }, 50);
+
+    return true;
+  } catch (err) {
+    console.error('Direct print error:', err);
+    window.print();
+    return false;
+  }
+}
+
+/**
+ * 2. Standalone window fallback for environments that prefer a separate window
  */
 export function printThermalReceiptViaNewWindow(
   invoice: Invoice,
@@ -254,11 +295,9 @@ export function printThermalReceiptViaNewWindow(
     const printWindow = window.open('', '_blank', 'width=450,height=700,menubar=no,toolbar=no,location=no');
 
     if (!printWindow) {
-      // Popup blocked - fallback to direct window print
       return printThermalReceiptDirect(invoice, settings);
     }
 
-    // Add interactive action buttons at the top of the standalone window
     const interactiveHtml = html.replace(
       '<body>',
       `<body>
@@ -276,7 +315,6 @@ export function printThermalReceiptViaNewWindow(
     printWindow.document.write(interactiveHtml);
     printWindow.document.close();
 
-    // Trigger print after styles load
     setTimeout(() => {
       try {
         printWindow.focus();
@@ -284,7 +322,7 @@ export function printThermalReceiptViaNewWindow(
       } catch (e) {
         console.error('Print window error:', e);
       }
-    }, 400);
+    }, 300);
 
     return true;
   } catch (err) {
@@ -294,69 +332,14 @@ export function printThermalReceiptViaNewWindow(
 }
 
 /**
- * 2. Direct Window Print Spooler
- * Uses the main window with dedicated @media print CSS for thermal paper.
- */
-export function printThermalReceiptDirect(
-  invoice: Invoice,
-  settings: ThermalSettings
-): boolean {
-  try {
-    // Check if #thermal-print-container exists, or create it
-    let container = document.getElementById('thermal-print-direct-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'thermal-print-direct-container';
-      document.body.appendChild(container);
-    }
-
-    const htmlContent = generateReceiptHtml(invoice, settings);
-    // Extract body content
-    const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-    const bodyInner = bodyMatch ? bodyMatch[1] : htmlContent;
-
-    container.innerHTML = bodyInner;
-    container.classList.add('thermal-active-print');
-
-    // Trigger print
-    setTimeout(() => {
-      window.print();
-      // Cleanup after print dialog
-      setTimeout(() => {
-        if (container) {
-          container.innerHTML = '';
-          container.classList.remove('thermal-active-print');
-        }
-      }, 1500);
-    }, 200);
-
-    return true;
-  } catch (err) {
-    console.error('Direct print error:', err);
-    window.print();
-    return false;
-  }
-}
-
-/**
- * 3. Unified Thermal Print dispatcher (checks platform and provides maximum reliability)
+ * 3. Unified Thermal Print dispatcher
+ * Uses direct DOM print to reliably launch the Android/Desktop system print dialog without popup blocks.
  */
 export async function printThermalReceipt(
   invoice: Invoice,
   settings: ThermalSettings
 ): Promise<boolean> {
-  // On mobile devices, opening a dedicated printable page or direct window print is far more reliable than iframes
-  const isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-  if (isMobile) {
-    const success = printThermalReceiptViaNewWindow(invoice, settings);
-    if (!success) {
-      return printThermalReceiptDirect(invoice, settings);
-    }
-    return true;
-  }
-
-  // On desktop, direct window print or new window works seamlessly
-  return printThermalReceiptViaNewWindow(invoice, settings);
+  return printThermalReceiptDirect(invoice, settings);
 }
 
 /**
@@ -374,7 +357,6 @@ export function printViaRawBT(invoice: Invoice, settings: ThermalSettings): bool
     // RawBT URI schemes
     const rawbtUri = `rawbt:data:text/plain;base64,${base64}`;
     
-    // Attempt opening RawBT
     const link = document.createElement('a');
     link.href = rawbtUri;
     link.click();

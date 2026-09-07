@@ -57,18 +57,17 @@ export function parseArabicNumber(val: any): number {
 }
 
 export function formatCurrency(num: any, currency: string = 'ر.ي'): string {
-  const parsed = parseArabicNumber(num);
-  const formatted = parsed.toLocaleString('en-US', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-  return `${formatted} ${currency}`;
+  return `${formatNumber(num)} ${currency}`;
 }
 
 export function formatNumber(num: any): string {
   if (num === undefined || num === null || num === '') return '0';
   const parsed = parseArabicNumber(num);
-  return parsed.toLocaleString('en-US', {
+  if (!isFinite(parsed) || isNaN(parsed)) return '0';
+
+  // Safeguard: If a corrupted concatenated number (> 100 million riyals) was passed, guard display
+  const safeNum = parsed > 999999999 ? 0 : parsed;
+  return safeNum.toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });
@@ -77,7 +76,9 @@ export function formatNumber(num: any): string {
 export function formatUnitPrice(num: any): string {
   if (num === undefined || num === null || num === '') return '0';
   const parsed = parseArabicNumber(num);
-  return parsed.toLocaleString('en-US', {
+  if (!isFinite(parsed) || isNaN(parsed)) return '0';
+  const safeNum = parsed > 999999999 ? 0 : parsed;
+  return safeNum.toLocaleString('en-US', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   });

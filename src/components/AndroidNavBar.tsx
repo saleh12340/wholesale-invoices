@@ -10,6 +10,7 @@ interface AndroidNavBarProps {
   itemsCount: number;
   debtorsCount?: number;
   isDark?: boolean;
+  onDeviceBack?: () => void;
 }
 
 export const AndroidNavBar: React.FC<AndroidNavBarProps> = ({
@@ -19,6 +20,7 @@ export const AndroidNavBar: React.FC<AndroidNavBarProps> = ({
   itemsCount,
   debtorsCount = 0,
   isDark = false,
+  onDeviceBack,
 }) => {
   const tabs = [
     {
@@ -110,13 +112,57 @@ export const AndroidNavBar: React.FC<AndroidNavBarProps> = ({
         })}
       </nav>
 
-      {/* Android System Home / Back / Recents Indicator Pill */}
+      {/* Android System 3-Key Navigation Bar (Back / Home / Recents) */}
       <div
-        className={`py-1.5 flex items-center justify-center select-none ${
-          isDark ? 'bg-slate-950' : 'bg-slate-100'
+        className={`py-1 px-8 flex items-center justify-between select-none transition-colors border-t ${
+          isDark
+            ? 'bg-slate-950 border-slate-900 text-slate-400'
+            : 'bg-slate-100 border-slate-200 text-slate-500'
         }`}
       >
-        <div className="w-28 h-1 bg-slate-400/40 rounded-full"></div>
+        {/* Recents / Tasks Button (Left in RTL) */}
+        <button
+          id="btn-android-sys-recents"
+          type="button"
+          onClick={() => {
+            sound.playTap();
+            onTabChange(activeTab === 'history' ? 'pos' : 'history');
+          }}
+          title="المهام السابقة / السجل"
+          className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 active:scale-90 transition"
+        >
+          <div className="w-3.5 h-3.5 border-2 border-current rounded-xs"></div>
+        </button>
+
+        {/* Home Button (Center) */}
+        <button
+          id="btn-android-sys-home"
+          type="button"
+          onClick={() => {
+            sound.playTap();
+            onTabChange('pos');
+          }}
+          title="الشاشة الرئيسية (الفاتورة)"
+          className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 active:scale-90 transition"
+        >
+          <div className="w-4 h-4 rounded-full border-2 border-current"></div>
+        </button>
+
+        {/* Back / Exit Button (Right in RTL - simulates phone hardware back button) */}
+        <button
+          id="btn-android-sys-back"
+          type="button"
+          onClick={() => {
+            if (onDeviceBack) onDeviceBack();
+          }}
+          title="زر الرجوع في الهاتف (اضغط مرتين للخروج من التطبيق)"
+          className="p-1.5 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 active:scale-90 transition flex items-center justify-center"
+        >
+          {/* RTL Android back triangle pointing right or left */}
+          <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+            <path d="M7 12l10-8v16z" />
+          </svg>
+        </button>
       </div>
     </div>
   );

@@ -242,32 +242,58 @@ export async function downloadReceiptImage(
 export async function shareReceiptImage(
   invoice: Invoice,
   options: ReceiptRenderOptions
-): Promise<boolean> {
+): Promise<{ success: boolean; method: 'web-share' | 'downloaded' | 'copied' | 'failed' }> {
   try {
     const canvas = renderReceiptToCanvas(invoice, options);
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, 'image/png')
     );
-    if (!blob) return false;
+    if (!blob) return { success: false, method: 'failed' };
 
-    const file = new File(
-      [blob],
-      `فاتورة_${invoice.number}.png`,
-      { type: 'image/png' }
-    );
+    const fileName = `فاتورة_${invoice.number}_${invoice.customer || 'نقدي'}.png`;
+    const file = new File([blob], fileName, { type: 'image/png' });
 
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({
-        title: `فاتورة #${invoice.number} - ${options.storeName}`,
-        text: `فاتورة #${invoice.number} بمبلغ ${formatNumber(invoice.total)} ${options.currency || 'ر.ي'}`,
-        files: [file],
-      });
-      return true;
+    // 1. Try Web Share API Level 2 (files sharing directly into WhatsApp/Apps)
+    if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          title: `فاتورة #${invoice.number} - ${options.storeName || 'بقالة العزي'}`,
+          files: [file],
+        });
+        return { success: true, method: 'web-share' };
+      } catch (shareErr) {
+        if ((shareErr as Error).name === 'AbortError') {
+          return { success: false, method: 'web-share' };
+        }
+        console.warn('Native share failed, using image download fallback:', shareErr);
+      }
     }
+
+    // 2. Direct download image file to device storage/gallery
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+    // 3. Try copying image to clipboard for easy paste into WhatsApp
+    if (typeof navigator !== 'undefined' && navigator.clipboard && typeof ClipboardItem !== 'undefined') {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ]);
+        return { success: true, method: 'copied' };
+      } catch {
+        // clipboard copy ignored
+      }
+    }
+
+    return { success: true, method: 'downloaded' };
   } catch (err) {
-    if ((err as Error).name !== 'AbortError') {
-      console.error('Sharing failed:', err);
-    }
+    console.error('Sharing failed:', err);
+    return { success: false, method: 'failed' };
   }
-  return false;
 }
