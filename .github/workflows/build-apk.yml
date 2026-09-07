@@ -1,0 +1,97 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: 📱 بناء تطبيق أندرويد (APK)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 استرجاع الكود من المستودع
+        uses: actions/checkout@v4
+
+      - name: ⚙️ إعداد بيئة Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: ☕ إعداد بيئة Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: 🤖 إعداد Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📦 تثبيت حزم المشروع
+        run: npm install --legacy-peer-deps
+
+      - name: 🏗️ بناء واجهة الويب (Vite Build)
+        run: npm run build
+
+      - name: 🔌 تثبيت Capacitor للأندرويد
+        run: |
+          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest --legacy-peer-deps
+
+      - name: 📱 تهيئة مشروع أندرويد (Capacitor)
+        run: |
+          if [ ! -d "android" ]; then
+            echo "إضافة منصة أندرويد للمشروع..."
+            npx cap add android
+          fi
+          echo "مزامنة ملفات التطبيق..."
+          npx cap sync android
+
+      - name: 🛠️ تجهيز صلاحيات Gradle
+        run: |
+          cd android
+          chmod +x gradlew
+
+      - name: 🔨 تجميع وبناء ملف الـ APK (Debug)
+        run: |
+          cd android
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: 🔍 التحقق من وجود ملف الـ APK
+        id: find-apk
+        run: |
+          APK_PATH=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "لم يتم العثور على ملف APK!"
+            exit 1
+          fi
+          echo "تم العثور على APK في: $APK_PATH"
+          echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+
+      - name: 📤 رفع ملف الـ APK للتنزيل المباشر (Artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Azizi-POS-Android-App
+          path: ${{ steps.find-apk.outputs.apk_path }}
+          retention-days: 30
+
+      - name: 📝 كتابة ملخص البناء والتعليمات
+        if: always()
+        run: |
+          echo "### 🎉 تم بناء تطبيق أندرويد بنجاح!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "يمكنك تحميل ملف الـ APK الآن من قسم **Artifacts** في أسفل صفحة هذا البناء على GitHub Actions." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **اسم التطبيق:** بقالة العزي - نظام الفواتير" >> $GITHUB_STEP_SUMMARY
+          echo "- **النوع:** Android APK (Debug)" >> $GITHUB_STEP_SUMMARY
+          echo "- **جاهز للتثبيت على الهواتف والأجهزة اللوحية دون الحاجة لمتجر Google Play.**" >> $GITHUB_STEP_SUMMARY

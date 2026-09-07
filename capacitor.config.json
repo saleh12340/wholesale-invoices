@@ -1,0 +1,8 @@
+{
+  "appId": "com.azizi.pos",
+  "appName": "بقالة العزي",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}
