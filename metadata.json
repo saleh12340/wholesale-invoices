@@ -1,0 +1,6 @@
+{
+  "name": "بقالة العزي - نظام الفواتير المحسّن",
+  "description": "تطبيق واجهات أندرويد متكامل لنقاط البيع والفواتير لبقالة العزي مع الطباعة الحرارية، السجل والبحث الذكي",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
