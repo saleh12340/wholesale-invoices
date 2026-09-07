@@ -23,18 +23,18 @@ jobs:
       - name: 📥 استرجاع الكود من المستودع
         uses: actions/checkout@v4
 
-      - name: ⚙️ إعداد بيئة Node.js
+      - name: ⚙️ إعداد بيئة Node.js (v22 LTS المطلوبة لـ Capacitor 7)
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
-      - name: ☕ إعداد بيئة Java 17
+      - name: ☕ إعداد بيئة Java (v21 LTS)
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17'
+          java-version: '21'
 
-      - name: 🤖 إعداد رخصة Android SDK
+      - name: 🤖 قبول رخص Android SDK
         run: |
           yes | sdkmanager --licenses || true
 
@@ -47,11 +47,12 @@ jobs:
       - name: 📱 مزامنة أندرويد مع الكاباسيتور
         run: |
           if [ ! -d "android" ]; then
+            echo "تهيئة منصة أندرويد..."
             npx cap add android
           fi
           npx cap sync android
 
-      - name: 🛠️ صلاحيات ملف Gradle
+      - name: 🛠️ تجهيز صلاحيات ملف Gradle
         run: |
           chmod +x android/gradlew
 
@@ -60,7 +61,7 @@ jobs:
           cd android
           ./gradlew assembleDebug --no-daemon
 
-      - name: 🔍 التحقق من ملف الـ APK
+      - name: 🔍 التحقق من وجود ملف الـ APK
         id: find-apk
         run: |
           APK_PATH=$(find android/app/build/outputs/apk/debug -name "*.apk" | head -n 1)
