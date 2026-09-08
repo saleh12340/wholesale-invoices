@@ -98,26 +98,34 @@ export async function shareBlobToWhatsApp(
   text = ''
 ): Promise<{ success: boolean; message: string }> {
   try {
+    // First use the Android/Web Share API when available. This preserves the real
+    // extension (.jpg/.png/.pdf/.xlsx), which prevents WhatsApp from reporting an
+    // unsupported attachment type.
+    const file = new File([blob], fileName, { type: mimeType });
+    if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ title: fileName, text, files: [file] });
+        return { success: true, message: 'تم فتح واتساب/نافذة المشاركة مع إرفاق الملف. اختر العميل ثم اضغط إرسال.' };
+      } catch (e: any) {
+        if (e?.name === 'AbortError') return { success: false, message: 'تم إلغاء المشاركة.' };
+      }
+    }
+
+    // Native Android fallback for APK builds.
     const android = getNativeBridge();
     if (android?.shareFileToWhatsApp) {
       const ok = Boolean(await android.shareFileToWhatsApp(await blobToBase64(blob), fileName, mimeType, phone, text));
       return ok
-        ? { success: true, message: 'تم فتح واتساب وإرفاق الملف بالصورة/المستند. اضغط إرسال للتأكيد.' }
+        ? { success: true, message: 'تم فتح واتساب وإرفاق الملف. اختر العميل ثم اضغط إرسال.' }
         : { success: false, message: 'تعذر فتح واتساب لمشاركة الملف.' };
     }
 
-    const file = new File([blob], fileName, { type: mimeType });
-    if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [file] })) {
-      await navigator.share({ title: fileName, text, files: [file] });
-      return { success: true, message: 'تم فتح نافذة المشاركة. اختر واتساب ثم أرسل الملف.' };
-    }
-
-    const phoneDigits = phone.replace(/[^0-9]/g, '');
+    const phoneDigits = String(phone || '').replace(/[^0-9]/g, '');
     const waUrl = phoneDigits
       ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(text || fileName)}`
       : `https://wa.me/?text=${encodeURIComponent(text || fileName)}`;
     window.open(waUrl, '_blank');
-    return { success: true, message: 'تم فتح واتساب. الصورة محفوظة في Downloads ويمكن إرفاقها وإرسالها.' };
+    return { success: true, message: 'تم فتح واتساب. اختر العميل وأرفق الملف ثم أرسله.' };
   } catch (e: any) {
     if (e?.name === 'AbortError') return { success: false, message: 'تم إلغاء المشاركة.' };
     console.error('WhatsApp file share error:', e);
@@ -131,7 +139,6 @@ export async function requestBluetoothPermission(): Promise<{ granted: boolean; 
     if (android?.requestBluetoothPermission) {
       const granted = Boolean(android.requestBluetoothPermission());
       if (!granted) return { granted: false, message: 'جارٍ طلب إذن البلوتوث والأجهزة المجاورة.' };
-      // Android native thermal printing uses paired devices; do not force Web Bluetooth on the APK.
       return { granted: true, message: 'تم السماح بالبلوتوث والأجهزة المجاورة.' };
     }
     if (!('bluetooth' in navigator)) return { granted: false, message: 'Web Bluetooth غير متاح في هذا المتصفح.' };
