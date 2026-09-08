@@ -1,113 +1,55 @@
 import { Invoice } from '../types';
 import { generateEscPosPlainText, ThermalSettings } from './thermalPrinter';
+import { requestBluetoothPermission } from './devicePermissions';
 
-/**
- * Web Bluetooth Direct Thermal Printing for Android Chrome & Desktop
- * Connects directly to Bluetooth POS printers without needing third-party apps.
- */
-export async function printDirectWebBluetooth(
-  invoice: Invoice,
-  settings: ThermalSettings
-): Promise<{ success: boolean; message: string }> {
-  // Check if Web Bluetooth is supported in the current browser
-  if (!('bluetooth' in navigator)) {
-    return {
-      success: false,
-      message: 'متصفحك لا يدعم تقنية Web Bluetooth المباشرة. يرجى استخدام تطبيق RawBT أو حفظ الإيصال كصورة.',
-    };
-  }
+export async function printDirectWebBluetooth(invoice: Invoice, settings: ThermalSettings): Promise<{ success: boolean; message: string }> {
+  if (!('bluetooth' in navigator)) return { success: false, message: 'متصفحك لا يدعم Web Bluetooth. استخدم RawBT أو طباعة النظام.' };
+
+  const permission = await requestBluetoothPermission();
+  if (!permission.granted) return { success: false, message: permission.message };
 
   try {
-    // Request nearby Bluetooth devices with exhaustive thermal POS printer service UUIDs
-    const device = await (navigator as any).bluetooth.requestDevice({
+    const device = permission.device || await (navigator as any).bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: [
-        '000018f0-0000-1000-8000-00805f9b34fb', // Standard Printer Service
+        '000018f0-0000-1000-8000-00805f9b34fb',
         'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
-        '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC transparent UART
-        '0000ff00-0000-1000-8000-00805f9b34fb', // Common thermal printer service
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455',
+        '0000ff00-0000-1000-8000-00805f9b34fb',
         '0000ae30-0000-1000-8000-00805f9b34fb',
         '0000af30-0000-1000-8000-00805f9b34fb',
-        '0000fee7-0000-1000-8000-00805f9b34fb', // Tencent / Microchip POS
+        '0000fee7-0000-1000-8000-00805f9b34fb',
         '0000ffff-0000-1000-8000-00805f9b34fb',
-        '00001101-0000-1000-8000-00805f9b34fb', // Serial Port Profile
       ],
     });
-
-    if (!device.gatt) {
-      return { success: false, message: 'تعذر الاتصال بالبلوتوث: جهاز الطباعة غير متاح.' };
-    }
-
+    if (!device?.gatt) return { success: false, message: 'تعذر الاتصال بالطابعة الحرارية.' };
     const server = await device.gatt.connect();
-
-    // Search for a writable characteristic in all primary services
     const services = await server.getPrimaryServices();
     let writeChar: any = null;
-
-    for (const s of services) {
-      const chars = await s.getCharacteristics();
-      for (const c of chars) {
-        if (c.properties.write || c.properties.writeWithoutResponse) {
-          writeChar = c;
-          break;
-        }
-      }
+    for (const service of services) {
+      const chars = await service.getCharacteristics();
+      writeChar = chars.find((c: any) => c.properties.write || c.properties.writeWithoutResponse) || null;
       if (writeChar) break;
     }
+    if (!writeChar) return { success: false, message: 'تم الاتصال بالطابعة ولكن لم يتم العثور على منفذ كتابة.' };
 
-    if (!writeChar) {
-      return {
-        success: false,
-        message: 'تم الاتصال بالطابعة ولكن لم يتم العثور على منفذ كتابة البيانات.',
-      };
-    }
-
-    // Generate ESC/POS text data
     const plainText = generateEscPosPlainText(invoice, settings);
-    // Initialize ESC/POS (ESC @) + Text
-    const encoder = new TextEncoder();
-    const initCmd = new Uint8Array([0x1b, 0x40]); // ESC @ (initialize printer)
-    const cutCmd = new Uint8Array([0x1d, 0x56, 0x41, 0x00]); // GS V A 0 (cut paper if supported)
-    const textBytes = encoder.encode(plainText);
+    const textBytes = new TextEncoder().encode(plainText);
+    const initCmd = new Uint8Array([0x1b, 0x40]);
+    const cutCmd = new Uint8Array([0x1d, 0x56, 0x41, 0x00]);
+    const payload = new Uint8Array(initCmd.length + textBytes.length + cutCmd.length);
+    payload.set(initCmd, 0); payload.set(textBytes, initCmd.length); payload.set(cutCmd, initCmd.length + textBytes.length);
 
-    // Combine
-    const fullPayload = new Uint8Array(initCmd.length + textBytes.length + cutCmd.length);
-    fullPayload.set(initCmd, 0);
-    fullPayload.set(textBytes, initCmd.length);
-    fullPayload.set(cutCmd, initCmd.length + textBytes.length);
-
-    // Write in chunks (max 512 bytes per packet for BLE)
-    const CHUNK_SIZE = 128;
-    for (let i = 0; i < fullPayload.length; i += CHUNK_SIZE) {
-      const chunk = fullPayload.slice(i, i + CHUNK_SIZE);
-      if (writeChar.writeValueWithoutResponse) {
-        await writeChar.writeValueWithoutResponse(chunk);
-      } else {
-        await writeChar.writeValue(chunk);
-      }
+    for (let i = 0; i < payload.length; i += 128) {
+      const chunk = payload.slice(i, i + 128);
+      if (writeChar.writeValueWithoutResponse) await writeChar.writeValueWithoutResponse(chunk);
+      else await writeChar.writeValue(chunk);
     }
-
-    // Disconnect after transmission
-    setTimeout(() => {
-      try {
-        device.gatt.disconnect();
-      } catch (e) {
-        // ignore
-      }
-    }, 1500);
-
-    return {
-      success: true,
-      message: `تم إرسال الفاتورة بنجاح إلى طابعة البلوتوث (${device.name || 'طابعة حرارية'})!`,
-    };
+    setTimeout(() => { try { device.gatt.disconnect(); } catch {} }, 1500);
+    return { success: true, message: `تم إرسال الفاتورة إلى ${device.name || 'الطابعة الحرارية'} بنجاح.` };
   } catch (err: any) {
-    if (err.name === 'NotFoundError' || err.message?.includes('User cancelled')) {
-      return { success: false, message: 'تم إلغاء اختيار طابعة البلوتوث.' };
-    }
+    if (err?.name === 'NotFoundError' || err?.message?.includes('cancel')) return { success: false, message: 'تم إلغاء اختيار طابعة البلوتوث.' };
     console.error('Bluetooth Print Error:', err);
-    return {
-      success: false,
-      message: `خطأ في اتصال طابعة البلوتوث: ${err.message || 'فشل الإرسال'}`,
-    };
+    return { success: false, message: `خطأ في اتصال طابعة البلوتوث: ${err?.message || 'فشل الإرسال'}` };
   }
 }
