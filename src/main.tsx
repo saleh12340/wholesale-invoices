@@ -5,6 +5,7 @@ import './index.css';
 import { startCustomerInvoicesEnhancer } from './utils/customerInvoicesEnhancer';
 import { startExportAndShareEnhancer } from './utils/exportAndShareEnhancer';
 import { startSettingsEnhancer } from './utils/settingsEnhancer';
+import { startAppCreativeEnhancer } from './utils/appCreativeEnhancer';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -15,3 +16,4 @@ createRoot(document.getElementById('root')!).render(
 startCustomerInvoicesEnhancer();
 startExportAndShareEnhancer();
 startSettingsEnhancer();
+startAppCreativeEnhancer();
