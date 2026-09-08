@@ -7,8 +7,9 @@ import { startExportAndShareEnhancer } from './utils/exportAndShareEnhancer';
 import { startSettingsEnhancer } from './utils/settingsEnhancer';
 import { startAppCreativeEnhancer } from './utils/appCreativeEnhancer';
 import { startBluetoothOnlyEnhancer } from './utils/bluetoothOnlyEnhancer';
+import { startInvoiceCustomerWorkflowEnhancer } from './utils/invoiceCustomerWorkflowEnhancer';
 
-// The small thermal printer is the primary printer profile.
+// The small Bluetooth thermal printer is the primary printer profile.
 try {
   const raw = JSON.parse(localStorage.getItem('azizi_app_settings') || '{}');
   if (!raw.thermalWidth) {
@@ -28,3 +29,4 @@ startExportAndShareEnhancer();
 startSettingsEnhancer();
 startAppCreativeEnhancer();
 startBluetoothOnlyEnhancer();
+startInvoiceCustomerWorkflowEnhancer();
