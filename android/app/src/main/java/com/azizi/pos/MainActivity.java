@@ -99,6 +99,38 @@ public class MainActivity extends BridgeActivity {
         });
     }
 
+    private void showPrinterSearch() {
+        runOnUiThread(() -> {
+            if (!hasBluetoothPermission()) { requestBluetoothPermissionInternal(); return; }
+            BluetoothAdapter adapter = BluetoothAdapter.getDefaultAdapter();
+            if (adapter == null) { showMessage("البلوتوث غير متوفر", "هذا الهاتف لا يدعم البلوتوث."); return; }
+            if (!adapter.isEnabled()) {
+                new AlertDialog.Builder(this).setTitle("تشغيل البلوتوث")
+                        .setMessage("شغّل البلوتوث للبحث عن الطابعات الحرارية المقترنة.")
+                        .setPositiveButton("فتح إعدادات البلوتوث", (d,w) -> openBluetoothSettings())
+                        .setNegativeButton("إلغاء", null).show(); return;
+            }
+            Set<BluetoothDevice> bonded = adapter.getBondedDevices();
+            if (bonded == null || bonded.isEmpty()) {
+                new AlertDialog.Builder(this).setTitle("لم يتم العثور على طابعة")
+                        .setMessage("لا توجد أجهزة مقترنة حالياً. اقترن بالطابعة من إعدادات البلوتوث ثم اضغط بحث مرة أخرى.")
+                        .setPositiveButton("فتح إعدادات البلوتوث", (d,w) -> openBluetoothSettings())
+                        .setNegativeButton("إلغاء", null).show(); return;
+            }
+            final List<BluetoothDevice> devices = new ArrayList<>(bonded);
+            final String[] names = new String[devices.size()];
+            for (int i=0;i<devices.size();i++) {
+                String name;
+                try { name = devices.get(i).getName(); } catch (SecurityException e) { name = null; }
+                names[i] = (name == null || name.trim().isEmpty()) ? "طابعة حرارية" : name;
+            }
+            new AlertDialog.Builder(this).setTitle("الطابعات الحرارية المقترنة")
+                    .setItems(names, (dialog, which) -> toastToWeb("تم العثور على الطابعة الحرارية: " + names[which]))
+                    .setNeutralButton("إعدادات البلوتوث", (d,w) -> openBluetoothSettings())
+                    .setNegativeButton("إغلاق", null).show();
+        });
+    }
+
     private void printToDevice(final BluetoothDevice device, final String imageBase64, final int preferredWidth) {
         new Thread(() -> {
             BluetoothSocket socket = null;
@@ -170,10 +202,17 @@ public class MainActivity extends BridgeActivity {
         return p;
     }
 
+    private String safeShareFileName(String fileName) {
+        if (fileName == null || fileName.trim().isEmpty()) return "share_file";
+        String cleaned = fileName.replaceAll("[^A-Za-z0-9._-]", "_");
+        if (cleaned.endsWith(".share")) cleaned = cleaned.substring(0, cleaned.length() - 6);
+        return cleaned;
+    }
+
     private Uri createShareFile(byte[] data, String fileName, String mimeType) throws Exception {
         File dir = new File(getCacheDir(), "whatsapp-share");
         if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create share cache");
-        File file = new File(dir, fileName.replaceAll("[^A-Za-z0-9._-]", "_") + ".share");
+        File file = new File(dir, safeShareFileName(fileName));
         try (FileOutputStream out = new FileOutputStream(file)) { out.write(data); }
         return FileProvider.getUriForFile(this, getPackageName()+".fileprovider", file);
     }
@@ -188,6 +227,9 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface public boolean requestBluetoothPermission() {
             if(Build.VERSION.SDK_INT<Build.VERSION_CODES.S || hasBluetoothPermission()) return true;
             requestBluetoothPermissionInternal(); return false;
+        }
+        @JavascriptInterface public boolean searchBluetoothPrinters() {
+            showPrinterSearch(); return true;
         }
         @JavascriptInterface public boolean printBluetoothImage(String base64Png,int preferredWidth) {
             if(base64Png==null||base64Png.isEmpty()) return false;
