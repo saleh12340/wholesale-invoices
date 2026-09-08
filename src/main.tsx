@@ -4,6 +4,7 @@ import App from './App.tsx';
 import './index.css';
 import { startCustomerInvoicesEnhancer } from './utils/customerInvoicesEnhancer';
 import { startExportAndShareEnhancer } from './utils/exportAndShareEnhancer';
+import { startSettingsEnhancer } from './utils/settingsEnhancer';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -13,3 +14,4 @@ createRoot(document.getElementById('root')!).render(
 
 startCustomerInvoicesEnhancer();
 startExportAndShareEnhancer();
+startSettingsEnhancer();
