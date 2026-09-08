@@ -7,6 +7,15 @@ import { startExportAndShareEnhancer } from './utils/exportAndShareEnhancer';
 import { startSettingsEnhancer } from './utils/settingsEnhancer';
 import { startAppCreativeEnhancer } from './utils/appCreativeEnhancer';
 
+// The small thermal printer is the primary printer profile.
+try {
+  const raw = JSON.parse(localStorage.getItem('azizi_app_settings') || '{}');
+  if (!raw.thermalWidth) {
+    raw.thermalWidth = '58mm';
+    localStorage.setItem('azizi_app_settings', JSON.stringify(raw));
+  }
+} catch {}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
