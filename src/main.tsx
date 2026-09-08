@@ -8,6 +8,7 @@ import { startSettingsEnhancer } from './utils/settingsEnhancer';
 import { startAppCreativeEnhancer } from './utils/appCreativeEnhancer';
 import { startBluetoothOnlyEnhancer } from './utils/bluetoothOnlyEnhancer';
 import { startInvoiceCustomerWorkflowEnhancer } from './utils/invoiceCustomerWorkflowEnhancer';
+import { startTopBluetoothPrinterEnhancer } from './utils/topBluetoothPrinterEnhancer';
 
 // The small Bluetooth thermal printer is the primary printer profile.
 try {
@@ -30,3 +31,4 @@ startSettingsEnhancer();
 startAppCreativeEnhancer();
 startBluetoothOnlyEnhancer();
 startInvoiceCustomerWorkflowEnhancer();
+startTopBluetoothPrinterEnhancer();
