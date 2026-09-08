@@ -20,9 +20,10 @@ import {
   CheckCircle2,
   ShoppingBag,
 } from 'lucide-react';
-import { CustomerAccount, CustomerTransaction } from '../types';
+import { CustomerAccount, CustomerTransaction, Invoice, InvoiceItem } from '../types';
 import { formatNumber, parseArabicNumber } from '../utils/arabic';
 import { sound } from '../utils/audio';
+import { printThermalReceipt } from '../utils/thermalPrinter';
 
 interface CustomersViewProps {
   customers: CustomerAccount[];
@@ -151,6 +152,43 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
 
     const url = `https://wa.me/${customer.phone ? customer.phone.replace(/[^0-9]/g, '') : ''}?text=${encodeURIComponent(msg)}`;
     window.open(url, '_blank');
+  };
+
+  // Print Statement on Thermal Printer
+  const handlePrintStatementThermal = (customer: CustomerAccount) => {
+    sound.playTap();
+    const statementItems: InvoiceItem[] = customer.transactions.map((t, idx) => ({
+      id: `tx-${idx}`,
+      name: `${t.date}: ${
+        t.type === 'invoice_credit'
+          ? 'فاتورة آجل ' + (t.invoiceNumber ? '#' + t.invoiceNumber : '')
+          : t.type === 'payment'
+          ? 'سداد نقدي'
+          : 'رصيد سابق'
+      } ${t.notes ? '(' + t.notes + ')' : ''}`,
+      qty: 1,
+      unitPrice: t.amount,
+      total: t.amount,
+    }));
+
+    const statementInvoice: Invoice = {
+      id: `stmt-${customer.id}-${Date.now()}`,
+      number: 0,
+      customer: `كشف حساب: ${customer.name}`,
+      date: new Date().toLocaleDateString('ar-YE'),
+      time: new Date().toLocaleTimeString('ar-YE', { hour: '2-digit', minute: '2-digit', hour12: true }),
+      timestamp: Date.now(),
+      items: statementItems,
+      total: customer.balance,
+      paymentType: 'credit',
+    };
+
+    printThermalReceipt(statementInvoice, {
+      storeName,
+      storeSubtitle: `كشف حساب عميل - الرصيد: ${formatNumber(customer.balance)} ${currency}`,
+      currency,
+      thermalWidth: '80mm',
+    });
   };
 
   return (
@@ -736,11 +774,19 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             {/* Footer Actions */}
             <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
               <button
+                onClick={() => handlePrintStatementThermal(selectedLedgerCustomer)}
+                className="py-2 px-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs"
+                title="طباعة كشف الحساب عبر الطابعة الحرارية"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>طباعة حرارية</span>
+              </button>
+              <button
                 onClick={() => handleShareStatement(selectedLedgerCustomer)}
-                className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+                className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs"
               >
                 <Share2 className="w-3.5 h-3.5" />
-                <span>إرسال كشف الحساب واتساب</span>
+                <span>إرسال واتساب</span>
               </button>
               <button
                 onClick={() => {

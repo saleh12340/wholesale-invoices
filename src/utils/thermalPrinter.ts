@@ -241,46 +241,76 @@ function formatTwoColumns(left: string, right: string, width: number): string {
 }
 
 /**
- * 1. Direct Window Print Spooler
- * Uses window.print() directly with dedicated @media print CSS for thermal paper.
- * No popups or window.open required, preventing mobile browser blockers!
+ * 1. Direct Window & Iframe Print Spooler
+ * Uses an isolated, dedicated hidden iframe to ensure styling integrity,
+ * preventing mobile browser popup blockers, and avoiding DOM erasure while Android print spooler prepares the document.
  */
+export function printThermalReceiptViaIframe(
+  invoice: Invoice,
+  settings: ThermalSettings
+): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      let iframe = document.getElementById('thermal-print-iframe') as HTMLIFrameElement;
+      if (!iframe) {
+        iframe = document.createElement('iframe');
+        iframe.id = 'thermal-print-iframe';
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = 'none';
+        iframe.style.opacity = '0';
+        iframe.style.pointerEvents = 'none';
+        iframe.setAttribute('aria-hidden', 'true');
+        document.body.appendChild(iframe);
+      }
+
+      const htmlContent = generateReceiptHtml(invoice, settings);
+      const doc = iframe.contentWindow?.document || iframe.contentDocument;
+
+      if (!doc) {
+        // Fallback to standard window.print if iframe document is unavailable
+        window.print();
+        resolve(true);
+        return;
+      }
+
+      doc.open();
+      doc.write(htmlContent);
+      doc.close();
+
+      // Allow font and CSS to parse before triggering print dialog
+      setTimeout(() => {
+        try {
+          iframe.contentWindow?.focus();
+          iframe.contentWindow?.print();
+          resolve(true);
+        } catch (e) {
+          console.warn('Iframe print error, falling back to window.print:', e);
+          window.print();
+          resolve(true);
+        }
+      }, 200);
+    } catch (err) {
+      console.error('Direct iframe print failed:', err);
+      try {
+        window.print();
+        resolve(true);
+      } catch {
+        resolve(false);
+      }
+    }
+  });
+}
+
 export function printThermalReceiptDirect(
   invoice: Invoice,
   settings: ThermalSettings
 ): boolean {
-  try {
-    let container = document.getElementById('thermal-print-direct-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'thermal-print-direct-container';
-      document.body.appendChild(container);
-    }
-
-    const htmlContent = generateReceiptHtml(invoice, settings);
-    const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*)<\/body>/i);
-    const bodyInner = bodyMatch ? bodyMatch[1] : htmlContent;
-
-    container.innerHTML = bodyInner;
-    container.style.display = 'block';
-
-    // Synchronously or with microtask trigger window.print
-    setTimeout(() => {
-      window.print();
-      setTimeout(() => {
-        if (container) {
-          container.innerHTML = '';
-          container.style.display = 'none';
-        }
-      }, 1000);
-    }, 50);
-
-    return true;
-  } catch (err) {
-    console.error('Direct print error:', err);
-    window.print();
-    return false;
-  }
+  printThermalReceiptViaIframe(invoice, settings);
+  return true;
 }
 
 /**
@@ -333,17 +363,17 @@ export function printThermalReceiptViaNewWindow(
 
 /**
  * 3. Unified Thermal Print dispatcher
- * Uses direct DOM print to reliably launch the Android/Desktop system print dialog without popup blocks.
  */
 export async function printThermalReceipt(
   invoice: Invoice,
   settings: ThermalSettings
 ): Promise<boolean> {
-  return printThermalReceiptDirect(invoice, settings);
+  return printThermalReceiptViaIframe(invoice, settings);
 }
 
 /**
- * Print directly via Android Bluetooth ESC/POS apps (RawBT, ESC/POS Print Service)
+ * 4. Print directly via Android Bluetooth ESC/POS apps (RawBT, ESC/POS Print Service)
+ * Supports URL scheme and Android Intent
  */
 export function printViaRawBT(invoice: Invoice, settings: ThermalSettings): boolean {
   try {
@@ -354,15 +384,48 @@ export function printViaRawBT(invoice: Invoice, settings: ThermalSettings): bool
     utf8Bytes.forEach((b) => (binary += String.fromCharCode(b)));
     const base64 = window.btoa(binary);
 
-    // RawBT URI schemes
+    // 1. RawBT URL scheme
     const rawbtUri = `rawbt:data:text/plain;base64,${base64}`;
-    
-    const link = document.createElement('a');
-    link.href = rawbtUri;
-    link.click();
+    // 2. Android Intent fallback
+    const intentUri = `intent:base64,${base64}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;type=text/plain;end;`;
+
+    // Try navigating directly first (best compatibility in Android WebViews)
+    try {
+      window.location.href = rawbtUri;
+    } catch {
+      const link = document.createElement('a');
+      link.href = intentUri;
+      link.click();
+    }
     return true;
   } catch (err) {
     console.error('Error printing via RawBT:', err);
+    return false;
+  }
+}
+
+/**
+ * 5. Print receipt as Image via RawBT.
+ * This is the ultimate method for Arabic thermal printing:
+ * It sends the rendered PNG image directly to RawBT, completely avoiding Arabic font/encoding issues!
+ */
+export function printViaRawBTImage(pngBase64DataUrl: string): boolean {
+  try {
+    // Remove "data:image/png;base64," prefix if present
+    const base64Only = pngBase64DataUrl.replace(/^data:image\/[a-z]+;base64,/, '');
+    const rawbtUri = `rawbt:data:image/png;base64,${base64Only}`;
+    const intentUri = `intent:base64,${base64Only}#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;type=image/png;end;`;
+
+    try {
+      window.location.href = rawbtUri;
+    } catch {
+      const link = document.createElement('a');
+      link.href = intentUri;
+      link.click();
+    }
+    return true;
+  } catch (err) {
+    console.error('Error printing image via RawBT:', err);
     return false;
   }
 }

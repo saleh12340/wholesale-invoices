@@ -64,7 +64,7 @@
   }
 
   #thermal-print-area,
-  #thermal-print-direct-container {
+  #thermal-print-direct-container:not(:empty) {
     display: block !important;
     visibility: visible !important;
     position: static !important;
@@ -81,7 +81,7 @@
   }
 
   #thermal-print-area *,
-  #thermal-print-direct-container * {
+  #thermal-print-direct-container:not(:empty) * {
     visibility: visible !important;
   }
 }

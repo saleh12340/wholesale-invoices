@@ -18,15 +18,19 @@ export async function printDirectWebBluetooth(
   }
 
   try {
-    // Request nearby Bluetooth devices
+    // Request nearby Bluetooth devices with exhaustive thermal POS printer service UUIDs
     const device = await (navigator as any).bluetooth.requestDevice({
       acceptAllDevices: true,
       optionalServices: [
         '000018f0-0000-1000-8000-00805f9b34fb', // Standard Printer Service
         'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
-        '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC
-        '0000ff00-0000-1000-8000-00805f9b34fb',
+        '49535343-fe7d-4ae5-8fa9-9fafd205e455', // ISSC transparent UART
+        '0000ff00-0000-1000-8000-00805f9b34fb', // Common thermal printer service
         '0000ae30-0000-1000-8000-00805f9b34fb',
+        '0000af30-0000-1000-8000-00805f9b34fb',
+        '0000fee7-0000-1000-8000-00805f9b34fb', // Tencent / Microchip POS
+        '0000ffff-0000-1000-8000-00805f9b34fb',
+        '00001101-0000-1000-8000-00805f9b34fb', // Serial Port Profile
       ],
     });
 

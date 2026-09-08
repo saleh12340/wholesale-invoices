@@ -16,6 +16,8 @@ import { ConfirmDialog } from './components/ConfirmDialog';
 import { AndroidToast } from './components/AndroidToast';
 
 import { Invoice, InvoiceItem, AppSettings, ActiveTab, CustomerAccount, CustomerTransaction } from './types';
+import { App as CapApp } from '@capacitor/app';
+import { Capacitor } from '@capacitor/core';
 import {
   INITIAL_SUGGESTIONS,
   INITIAL_PRICES,
@@ -292,6 +294,19 @@ export default function App() {
         setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings) });
       }
 
+      // Restore active draft if available (prevents cashier losing unprinted items on app restart)
+      const savedDraft = localStorage.getItem('azizi_active_draft');
+      if (savedDraft) {
+        try {
+          const draft = JSON.parse(savedDraft);
+          if (Array.isArray(draft.items) && draft.items.length > 0) {
+            setItems(draft.items);
+          }
+          if (draft.customerName) setCustomerName(draft.customerName);
+          if (draft.paymentType) setPaymentType(draft.paymentType);
+        } catch {}
+      }
+
       // Check window width to set initial frame mode: on desktop default to phone frame, on mobile fullscreen
       if (window.innerWidth >= 768) {
         setIsPhoneFrame(true);
@@ -322,6 +337,15 @@ export default function App() {
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // 3. Auto-save active draft to localStorage
+  useEffect(() => {
+    if (items.length > 0) {
+      localStorage.setItem('azizi_active_draft', JSON.stringify({ items, customerName, paymentType }));
+    } else {
+      localStorage.removeItem('azizi_active_draft');
+    }
+  }, [items, customerName, paymentType]);
 
   // Save changes to localStorage helper
   const persistData = (
@@ -397,8 +421,14 @@ export default function App() {
       setIsExitModalOpen(false);
       return;
     }
+    // 4. If user is in a sub-tab (History, Customers, Catalog, Settings), Back button returns to POS
+    if (stateRef.current.activeTab !== 'pos') {
+      sound.playTap();
+      setActiveTab('pos');
+      return;
+    }
 
-    // 4. Double-tap detection for application exit
+    // 5. Double-tap detection for application exit on POS main screen
     const now = Date.now();
     const elapsed = now - lastBackPressTimeRef.current;
 
@@ -425,7 +455,7 @@ export default function App() {
     }
   };
 
-  // Hardware Back Button listener via HTML5 History popstate & keyboard Escape
+  // Hardware Back Button listener via Capacitor Native Android, Cordova, HTML5 History popstate & keyboard Escape
   useEffect(() => {
     try {
       window.history.pushState({ app: 'al-ezzi-pos' }, '', window.location.href);
@@ -433,6 +463,28 @@ export default function App() {
       // ignore
     }
 
+    // 1. Capacitor Native Android Back Button Listener
+    let capListenerHandle: any = null;
+    try {
+      CapApp.addListener('backButton', () => {
+        handleDeviceBackButton();
+      }).then((handle) => {
+        capListenerHandle = handle;
+      }).catch((e) => {
+        console.warn('Capacitor backButton error:', e);
+      });
+    } catch (e) {
+      console.warn('CapApp listener init exception:', e);
+    }
+
+    // 2. Cordova / Android WebView backbutton event
+    const onCordovaBack = (e: Event) => {
+      e.preventDefault();
+      handleDeviceBackButton();
+    };
+    document.addEventListener('backbutton', onCordovaBack, false);
+
+    // 3. Web & PWA popstate history trap
     const onPopState = () => {
       try {
         window.history.pushState({ app: 'al-ezzi-pos' }, '', window.location.href);
@@ -453,6 +505,10 @@ export default function App() {
     window.addEventListener('keydown', onKeyDown);
 
     return () => {
+      if (capListenerHandle && typeof capListenerHandle.remove === 'function') {
+        capListenerHandle.remove();
+      }
+      document.removeEventListener('backbutton', onCordovaBack);
       window.removeEventListener('popstate', onPopState);
       window.removeEventListener('keydown', onKeyDown);
       if (backPressTimerRef.current) {
@@ -854,16 +910,18 @@ export default function App() {
     if (typeof navigator !== 'undefined' && 'bluetooth' in navigator) {
       showToast('جاري البحث عن طابعة البلوتوث...');
       try {
-        const success = await printDirectWebBluetooth(currentInvoiceObj, {
+        const res = await printDirectWebBluetooth(currentInvoiceObj, {
           storeName: settings.storeName,
           storeSubtitle: settings.storeSubtitle,
           storePhone: settings.storePhone,
           currency: settings.currency,
         });
-        if (success) {
-          showToast('تمت الطباعة بنجاح عبر البلوتوث!');
+        if (res.success) {
+          showToast(res.message);
           sound.playSuccess();
           return;
+        } else {
+          showToast(res.message, 'info');
         }
       } catch (err) {
         console.warn('Web Bluetooth cancelled or failed, falling back to RawBT:', err);
@@ -1378,8 +1436,22 @@ export default function App() {
         isOpen={isExitModalOpen}
         onClose={() => setIsExitModalOpen(false)}
         onConfirmExit={() => {
+          sound.playTap();
           setIsExitModalOpen(false);
           setIsAppExited(true);
+          try {
+            CapApp.exitApp();
+          } catch {}
+          try {
+            if ((navigator as any).app?.exitApp) {
+              (navigator as any).app.exitApp();
+            }
+          } catch {}
+          try {
+            if ((window as any).Android?.closeApp) {
+              (window as any).Android.closeApp();
+            }
+          } catch {}
           try {
             window.close();
           } catch {

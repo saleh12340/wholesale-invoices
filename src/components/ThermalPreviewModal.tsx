@@ -3,8 +3,8 @@ import { X, Printer, Share2, Copy, Bluetooth, Download, ExternalLink, Image as I
 import { Invoice } from '../types';
 import { formatNumber, formatUnitPrice, parseArabicNumber } from '../utils/arabic';
 import { sound } from '../utils/audio';
-import { downloadReceiptImage, shareReceiptImage } from '../utils/receiptCanvas';
-import { printThermalReceiptViaNewWindow, printViaRawBT } from '../utils/thermalPrinter';
+import { downloadReceiptImage, shareReceiptImage, renderReceiptToCanvas } from '../utils/receiptCanvas';
+import { printThermalReceiptViaNewWindow, printViaRawBT, printViaRawBTImage } from '../utils/thermalPrinter';
 
 interface ThermalPreviewModalProps {
   isOpen: boolean;
@@ -98,6 +98,26 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
       currency,
       thermalWidth: resolvedWidth,
     });
+  };
+
+  const handleRawBtImage = () => {
+    sound.playTap();
+    try {
+      const canvas = renderReceiptToCanvas(invoice, {
+        storeName,
+        storeSubtitle,
+        storePhone,
+        currency,
+        thermalWidth: resolvedWidth,
+      });
+      const dataUrl = canvas.toDataURL('image/png');
+      const ok = printViaRawBTImage(dataUrl);
+      if (ok) sound.playSuccess();
+      else sound.playError();
+    } catch (e) {
+      console.error('Error printing image via RawBT:', e);
+      sound.playError();
+    }
   };
 
   const handleCopy = () => {
@@ -237,7 +257,7 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
             </button>
           </div>
 
-          {/* Row 2: Direct Bluetooth & Standalone Window */}
+          {/* Row 2: Direct Bluetooth & RawBT Image (Guaranteed Arabic) */}
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => {
@@ -245,37 +265,47 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
                 if (onPrintBluetooth) onPrintBluetooth();
               }}
               className="py-2 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+              title="الاتصال المباشر بطابعات البلوتوث عبر Web Bluetooth"
             >
               <Bluetooth className="w-4 h-4" />
               <span>طابعة بلوتوث مباشرة</span>
             </button>
 
             <button
-              onClick={handleOpenNewWindow}
-              className="py-2 px-2 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
-              title="فتح صفحة مستقلة للطباعة تضمن التوافق مع كافة أجهزة أندرويد"
+              onClick={handleRawBtImage}
+              className="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+              title="طباعة الإيصال كصورة عبر RawBT لضمان وضوح الحروف العربية 100% دون تقطيع"
             >
-              <ExternalLink className="w-4 h-4" />
-              <span>نافذة طباعة مستقلة</span>
+              <ImageIcon className="w-4 h-4" />
+              <span>RawBT صورة (عربي 100%)</span>
             </button>
           </div>
 
-          {/* Row 3: RawBT, Share Image, WhatsApp, Copy */}
-          <div className="grid grid-cols-4 gap-1.5">
+          {/* Row 3: RawBT Text, Standalone Window, WhatsApp, Share, Copy */}
+          <div className="grid grid-cols-5 gap-1.5">
             <button
               onClick={handleRawBtApp}
-              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1"
-              title="إرسال لتطبيق RawBT"
+              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-0.5"
+              title="إرسال نص الفاتورة لتطبيق RawBT"
             >
-              <span>RawBT</span>
+              <span>RawBT نص</span>
+            </button>
+
+            <button
+              onClick={handleOpenNewWindow}
+              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-0.5"
+              title="فتح صفحة مستقلة للطباعة"
+            >
+              <ExternalLink className="w-3 h-3" />
+              <span>نافذة</span>
             </button>
 
             <button
               onClick={handleShareImage}
-              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1"
+              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-0.5"
               title="مشاركة صورة الإيصال"
             >
-              <ImageIcon className="w-3.5 h-3.5" />
+              <Share2 className="w-3 h-3" />
               <span>مشاركة</span>
             </button>
 
@@ -284,18 +314,19 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
                 sound.playTap();
                 onShareWhatsApp();
               }}
-              className="py-1.5 px-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1"
+              className="py-1.5 px-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-0.5"
+              title="إرسال عبر واتساب"
             >
-              <Share2 className="w-3.5 h-3.5" />
               <span>واتساب</span>
             </button>
 
             <button
               onClick={handleCopy}
-              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1"
+              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-0.5"
+              title="نسخ نص الفاتورة"
             >
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'تم!' : 'نسخ'}</span>
+              {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+              <span>{copied ? 'تم' : 'نسخ'}</span>
             </button>
           </div>
         </div>
