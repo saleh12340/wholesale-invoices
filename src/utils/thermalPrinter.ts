@@ -314,49 +314,22 @@ export function printThermalReceiptDirect(
 }
 
 /**
- * 2. Standalone window fallback for environments that prefer a separate window
+ * 2. Native System Print Dialog for Android & Browser
+ * Directly invokes the native OS/browser print dialog without window.open redirects.
  */
 export function printThermalReceiptViaNewWindow(
   invoice: Invoice,
   settings: ThermalSettings
 ): boolean {
   try {
-    const html = generateReceiptHtml(invoice, settings);
-    const printWindow = window.open('', '_blank', 'width=450,height=700,menubar=no,toolbar=no,location=no');
-
-    if (!printWindow) {
-      return printThermalReceiptDirect(invoice, settings);
+    // If running in Android WebView/Web2App/Browser, invoke native system print directly
+    if (typeof window !== 'undefined' && typeof window.print === 'function') {
+      window.print();
+      return true;
     }
-
-    const interactiveHtml = html.replace(
-      '<body>',
-      `<body>
-        <div class="no-print" style="margin-bottom: 12px; padding: 8px; background: #f1f5f9; border-radius: 8px; text-align: center;">
-          <button onclick="window.print()" style="background: #059669; color: white; border: none; padding: 10px 20px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; width: 100%; margin-bottom: 6px;">
-            🖨️ اضغط هنا لطباعة الفاتورة
-          </button>
-          <button onclick="window.close()" style="background: #e2e8f0; color: #334155; border: none; padding: 6px 14px; font-size: 13px; border-radius: 6px; cursor: pointer; width: 100%;">
-            إغلاق النافذة
-          </button>
-        </div>`
-    );
-
-    printWindow.document.open();
-    printWindow.document.write(interactiveHtml);
-    printWindow.document.close();
-
-    setTimeout(() => {
-      try {
-        printWindow.focus();
-        printWindow.print();
-      } catch (e) {
-        console.error('Print window error:', e);
-      }
-    }, 300);
-
-    return true;
+    return printThermalReceiptDirect(invoice, settings);
   } catch (err) {
-    console.error('Error opening print window:', err);
+    console.error('Error invoking native print:', err);
     return printThermalReceiptDirect(invoice, settings);
   }
 }

@@ -7,6 +7,7 @@ import {
   Share2,
   RotateCcw,
   Calendar,
+  Clock,
   User,
   Package,
   TrendingUp,
@@ -345,11 +346,20 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
                 </div>
               </div>
 
-              {/* Date & Time */}
-              <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-slate-500 font-mono">
-                <Calendar className="w-3 h-3" />
-                <span>{inv.date}</span>
-                {inv.time && <span>• {inv.time}</span>}
+              {/* Date & Time and Last Modified */}
+              <div className="flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-400 dark:text-slate-500 font-mono">
+                <div className="flex items-center gap-1">
+                  <Calendar className="w-3 h-3" />
+                  <span>{inv.date}</span>
+                  {inv.time && <span>• {inv.time}</span>}
+                </div>
+                {inv.lastModified && (
+                  <div className="text-amber-700 dark:text-amber-400 font-sans font-bold flex items-center gap-1 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded">
+                    <Clock className="w-2.5 h-2.5" />
+                    <span>آخر تعديل:</span>
+                    <span className="font-mono">{inv.lastModified}</span>
+                  </div>
+                )}
               </div>
 
               {/* Action Buttons Row 1: Restore, Thermal Print, WhatsApp Image */}

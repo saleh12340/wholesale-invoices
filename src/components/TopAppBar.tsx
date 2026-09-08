@@ -4,6 +4,7 @@ import {
   Save,
   History,
   Copy,
+  BarChart3,
   RotateCcw,
   Moon,
   Sun,
@@ -25,7 +26,8 @@ interface TopAppBarProps {
   onPrint: () => void;
   onSave: () => void;
   onHistory: () => void;
-  onCopy: () => void;
+  onOpenReports: () => void;
+  onCopy?: () => void;
   historyCount: number;
   itemsCount: number;
   onReset: () => void;
@@ -51,6 +53,7 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
   onPrint,
   onSave,
   onHistory,
+  onOpenReports,
   onCopy,
   historyCount,
   itemsCount,
@@ -122,19 +125,18 @@ export const TopAppBar: React.FC<TopAppBarProps> = ({
           )}
         </button>
 
-        {/* Copy Button (White/Dark with Amber border) */}
+        {/* Reports Button (Replaces Copy button as requested) */}
         <button
-          id="btn-top-copy"
+          id="btn-top-reports"
           onClick={() => {
             sound.playTap();
-            onCopy();
+            onOpenReports();
           }}
-          disabled={itemsCount === 0}
-          className="py-2.5 px-1 bg-white dark:bg-slate-800 border-2 border-amber-500 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 active:scale-95 font-bold text-xs sm:text-sm rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-          title="نسخ نص الفاتورة"
+          className="py-2.5 px-1 bg-white dark:bg-slate-800 border-2 border-amber-500 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 active:scale-95 font-bold text-xs sm:text-sm rounded-xl shadow-xs transition flex items-center justify-center gap-1.5"
+          title="عرض تقارير المبيعات والأرباح (يومي، شهري، سنوي)"
         >
-          <Copy className="w-4 h-4" />
-          <span>نسخ</span>
+          <BarChart3 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          <span>التقارير</span>
         </button>
       </div>
 

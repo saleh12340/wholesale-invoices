@@ -4,6 +4,7 @@ export interface InvoiceItem {
   qty: number;
   total: number;
   unitPrice: number;
+  costPrice?: number;
 }
 
 export interface Invoice {
@@ -14,8 +15,12 @@ export interface Invoice {
   date: string;
   time: string;
   timestamp: number;
+  lastModified?: string;
+  lastModifiedTimestamp?: number;
   items: InvoiceItem[];
   total: number;
+  costTotal?: number;
+  profit?: number;
   paymentType: 'cash' | 'credit'; // نقدي أو آجل
   notes?: string;
 }
@@ -23,6 +28,7 @@ export interface Invoice {
 export interface ProductSuggestion {
   name: string;
   price: number;
+  cost?: number;
   category?: string;
 }
 
@@ -61,4 +67,4 @@ export interface AppSettings {
   thermalWidth: '58mm' | '80mm';
 }
 
-export type ActiveTab = 'pos' | 'customers' | 'history' | 'catalog' | 'settings';
+export type ActiveTab = 'pos' | 'customers' | 'history' | 'catalog' | 'settings' | 'reports';

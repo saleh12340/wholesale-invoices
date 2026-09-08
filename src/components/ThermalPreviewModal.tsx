@@ -208,13 +208,17 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
 
   const handleOpenNewWindow = () => {
     sound.playTap();
-    printThermalReceiptViaNewWindow(invoice, {
-      storeName,
-      storeSubtitle,
-      storePhone,
-      currency,
-      thermalWidth: resolvedWidth,
-    });
+    if (typeof window !== 'undefined' && typeof window.print === 'function') {
+      window.print();
+    } else {
+      printThermalReceiptViaNewWindow(invoice, {
+        storeName,
+        storeSubtitle,
+        storePhone,
+        currency,
+        thermalWidth: resolvedWidth,
+      });
+    }
   };
 
   const handleRawBtApp = () => {
@@ -452,11 +456,12 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
             </button>
 
             <button
+              id="btn-print-window-native"
               onClick={handleOpenNewWindow}
               className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1"
-              title="فتح صفحة مستقلة للطباعة"
+              title="استدعاء نافذة الطباعة الخاصة بالنظام أو المتصفح مباشرة (window.print)"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <Printer className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>نافذة طباعة</span>
             </button>
 

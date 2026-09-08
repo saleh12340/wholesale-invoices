@@ -3,10 +3,12 @@ import * as XLSX from 'xlsx';
 import { Invoice, CustomerAccount } from '../types';
 import { renderReceiptToCanvas, ReceiptRenderOptions } from './receiptCanvas';
 import { formatNumber } from './arabic';
+import { saveFileToDownloads, requestStoragePermission } from './devicePermissions';
 
 /**
  * 1. Export Invoice to PDF (Portable Document Format)
- * Renders the pixel-perfect thermal receipt canvas into a PDF file.
+ * Renders the pixel-perfect thermal receipt canvas into a PDF file
+ * and saves it directly to the device's Downloads directory.
  */
 export async function exportInvoiceToPdf(
   invoice: Invoice,
@@ -32,9 +34,9 @@ export async function exportInvoiceToPdf(
     pdf.addImage(imgData, 'JPEG', 0, 0, targetWidthMm, targetHeightMm);
 
     const fileName = `فاتورة_${invoice.number}_${(invoice.customer || 'نقدي').replace(/\s+/g, '_')}.pdf`;
+    const pdfBlob = pdf.output('blob');
 
     if (action === 'share' && typeof navigator !== 'undefined' && navigator.canShare) {
-      const pdfBlob = pdf.output('blob');
       const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
       if (navigator.canShare({ files: [pdfFile] })) {
         await navigator.share({
@@ -45,9 +47,9 @@ export async function exportInvoiceToPdf(
       }
     }
 
-    // Default download
-    pdf.save(fileName);
-    return { success: true, message: 'تم حفظ ملف PDF على جهازك بنجاح' };
+    // Direct dynamic storage permission & real save to Downloads folder
+    const saveRes = await saveFileToDownloads(pdfBlob, fileName, 'application/pdf');
+    return saveRes;
   } catch (err) {
     console.error('PDF Export Error:', err);
     return { success: false, message: 'حدث خطأ أثناء تصدير ملف PDF' };
@@ -56,7 +58,8 @@ export async function exportInvoiceToPdf(
 
 /**
  * 2. Export Invoice to Excel (.xlsx / .xls)
- * Creates a structured, bilingual Arabic spreadsheet with all item details.
+ * Creates a structured, bilingual Arabic spreadsheet with all item details
+ * and saves it directly to the device's Downloads directory.
  */
 export async function exportInvoiceToExcel(
   invoice: Invoice,
@@ -100,12 +103,12 @@ export async function exportInvoiceToExcel(
     XLSX.utils.book_append_sheet(workbook, worksheet, 'فاتورة المبيعات');
 
     const fileName = `فاتورة_${invoice.number}_${(invoice.customer || 'نقدي').replace(/\s+/g, '_')}.xlsx`;
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const excelBlob = new Blob([excelBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
 
     if (action === 'share' && typeof navigator !== 'undefined' && navigator.canShare) {
-      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-      const excelBlob = new Blob([excelBuffer], {
-        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      });
       const excelFile = new File([excelBlob], fileName, {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
@@ -118,8 +121,13 @@ export async function exportInvoiceToExcel(
       }
     }
 
-    XLSX.writeFile(workbook, fileName);
-    return { success: true, message: 'تم تحميل ملف Excel بنجاح' };
+    // Direct dynamic storage permission & real save to Downloads folder
+    const saveRes = await saveFileToDownloads(
+      excelBlob,
+      fileName,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    return saveRes;
   } catch (err) {
     console.error('Excel Export Error:', err);
     return { success: false, message: 'حدث خطأ أثناء تصدير ملف Excel' };
@@ -154,16 +162,12 @@ export async function exportInvoiceToJpg(
       }
     }
 
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1500);
+    if (action === 'download') {
+      const saveRes = await saveFileToDownloads(blob, fileName, 'image/jpeg');
+      return saveRes;
+    }
 
-    return { success: true, message: 'تم حفظ صورة الفاتورة (JPG) في جهازك' };
+    return { success: true, message: 'تم تجهيز صورة الفاتورة بنجاح' };
   } catch (err) {
     console.error('JPG Export Error:', err);
     return { success: false, message: 'تعذر تصدير صورة الفاتورة' };
@@ -417,8 +421,16 @@ export async function exportCustomerStatementToExcel(
     XLSX.utils.book_append_sheet(workbook, worksheet, 'كشف الحساب');
 
     const fileName = `كشف_حساب_${customer.name.replace(/\s+/g, '_')}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
-    return { success: true, message: 'تم تحميل كشف الحساب بصيغة Excel بنجاح' };
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const excelBlob = new Blob([excelBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const saveRes = await saveFileToDownloads(
+      excelBlob,
+      fileName,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    return saveRes;
   } catch (err) {
     console.error('Customer Statement Excel Error:', err);
     return { success: false, message: 'فشل تصدير كشف الحساب إلى Excel' };
@@ -437,24 +449,25 @@ export async function exportAllHistoryToExcel(
     const totalSales = history.reduce((s, inv) => s + (inv.total || 0), 0);
 
     const rows = [
-      [options.storeName || 'بقالة العزي', '', '', '', '', '', ''],
-      ['سجل جميع الفواتير والمبيعات', '', '', '', '', '', ''],
-      ['تاريخ التصدير:', new Date().toLocaleDateString('ar-YE'), 'إجمالي عدد الفواتير:', history.length, '', '', ''],
-      ['إجمالي المبيعات المؤرشفة:', `${formatNumber(totalSales)} ${currency}`, '', '', '', '', ''],
+      [options.storeName || 'بقالة العزي', '', '', '', '', '', '', ''],
+      ['سجل جميع الفواتير والمبيعات', '', '', '', '', '', '', ''],
+      ['تاريخ التصدير:', new Date().toLocaleDateString('ar-YE'), 'إجمالي عدد الفواتير:', history.length, '', '', '', ''],
+      ['إجمالي المبيعات المؤرشفة:', `${formatNumber(totalSales)} ${currency}`, '', '', '', '', '', ''],
       [''],
-      ['رقم الفاتورة', 'التاريخ', 'الوقت', 'العميل', 'طريقة الدفع', 'عدد الأصناف', `المجموع (${currency})`],
+      ['رقم الفاتورة', 'التاريخ', 'الوقت', 'آخر تعديل', 'العميل', 'طريقة الدفع', 'عدد الأصناف', `المجموع (${currency})`],
       ...history.map((inv) => [
         `#${inv.number}`,
         inv.date,
         inv.time || '',
+        inv.lastModified || 'لم يُعدّل',
         inv.customer || 'عميل نقدي',
         inv.paymentType === 'credit' ? 'آجل (ذمة)' : 'نقدي',
         inv.items.length,
         inv.total,
       ]),
       [''],
-      ['', '', '', '', 'المجموع العام للمبيعات:', '', totalSales],
-      ['', '', '', '', 'العملة:', '', currency],
+      ['', '', '', '', '', 'المجموع العام للمبيعات:', '', totalSales],
+      ['', '', '', '', '', 'العملة:', '', currency],
     ];
 
     const worksheet = XLSX.utils.aoa_to_sheet(rows);
@@ -462,6 +475,7 @@ export async function exportAllHistoryToExcel(
       { wch: 14 },
       { wch: 14 },
       { wch: 12 },
+      { wch: 20 },
       { wch: 24 },
       { wch: 16 },
       { wch: 12 },
@@ -472,11 +486,295 @@ export async function exportAllHistoryToExcel(
     XLSX.utils.book_append_sheet(workbook, worksheet, 'سجل المبيعات');
 
     const fileName = `سجل_فواتير_${options.storeName.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    XLSX.writeFile(workbook, fileName);
-    return { success: true, message: 'تم تصدير سجل الفواتير بالكامل إلى Excel بنجاح' };
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const excelBlob = new Blob([excelBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+    const saveRes = await saveFileToDownloads(
+      excelBlob,
+      fileName,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    return saveRes;
   } catch (err) {
     console.error('History Excel Export Error:', err);
     return { success: false, message: 'فشل تصدير سجل الفواتير إلى Excel' };
   }
 }
+
+/**
+ * 8. Export Sales Report (Daily, Monthly, Yearly) to Excel (.xlsx)
+ * Includes Total Sales, Total Profits, Cash, Credit, Invoices breakdown, and Modification timestamps.
+ */
+export async function exportReportToExcel(
+  reportData: {
+    periodType: 'daily' | 'monthly' | 'yearly';
+    periodLabel: string;
+    totalSales: number;
+    totalProfit: number;
+    cashSales: number;
+    creditSales: number;
+    invoicesCount: number;
+    invoices: Invoice[];
+  },
+  options: { storeName: string; currency?: string }
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const currency = options.currency || 'ر.ي';
+    const periodTitle =
+      reportData.periodType === 'daily'
+        ? `تقرير المبيعات اليومي (${reportData.periodLabel})`
+        : reportData.periodType === 'monthly'
+        ? `تقرير المبيعات الشهري (${reportData.periodLabel})`
+        : `تقرير المبيعات السنوي (${reportData.periodLabel})`;
+
+    const rows = [
+      [options.storeName || 'بقالة العزي', '', '', '', '', '', '', ''],
+      [periodTitle, '', '', '', '', '', '', ''],
+      ['تاريخ إنشاء التقرير:', new Date().toLocaleDateString('ar-YE') + ' ' + new Date().toLocaleTimeString('ar-YE'), '', '', '', '', '', ''],
+      [''],
+      ['ملخص الفترة:', '', '', '', '', '', '', ''],
+      ['إجمالي المبيعات', `${formatNumber(reportData.totalSales)} ${currency}`, '', 'إجمالي الأرباح', `${formatNumber(reportData.totalProfit)} ${currency}`, '', '', ''],
+      ['المبيعات النقدية', `${formatNumber(reportData.cashSales)} ${currency}`, '', 'المبيعات الآجلة (ذمم)', `${formatNumber(reportData.creditSales)} ${currency}`, '', '', ''],
+      ['إجمالي عدد الفواتير', `${reportData.invoicesCount} فاتورة`, '', 'هامش الربح التقريبي', reportData.totalSales > 0 ? `${Math.round((reportData.totalProfit / reportData.totalSales) * 100)}%` : '0%', '', '', ''],
+      [''],
+      ['جدول تفاصيل الفواتير والعمليات:', '', '', '', '', '', '', ''],
+      ['رقم الفاتورة', 'التاريخ والوقت', 'تاريخ ووقت آخر تعديل', 'اسم العميل', 'طريقة الدفع', 'عدد الأصناف', `المجموع (${currency})`, `الربح (${currency})`],
+      ...reportData.invoices.map((inv) => {
+        const invProfit = inv.profit !== undefined ? inv.profit : Math.round(inv.total * 0.18);
+        return [
+          `#${inv.number}`,
+          `${inv.date} ${inv.time || ''}`,
+          inv.lastModified || 'لم يُعدّل',
+          inv.customer || 'عميل نقدي',
+          inv.paymentType === 'credit' ? 'آجل' : 'نقدي',
+          inv.items.length,
+          inv.total,
+          invProfit,
+        ];
+      }),
+      [''],
+      ['', '', '', '', 'المجموع الكلي للمبيعات:', '', reportData.totalSales, reportData.totalProfit],
+    ];
+
+    const worksheet = XLSX.utils.aoa_to_sheet(rows);
+    worksheet['!cols'] = [
+      { wch: 14 },
+      { wch: 20 },
+      { wch: 22 },
+      { wch: 24 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 18 },
+      { wch: 18 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'تقرير المبيعات والأرباح');
+
+    const cleanLabel = reportData.periodLabel.replace(/[/\\?%*:|"<>]/g, '_');
+    const fileName = `تقرير_${reportData.periodType}_${cleanLabel}.xlsx`;
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const excelBlob = new Blob([excelBuffer], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    });
+
+    const saveRes = await saveFileToDownloads(
+      excelBlob,
+      fileName,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    return saveRes;
+  } catch (err) {
+    console.error('Report Excel Export Error:', err);
+    return { success: false, message: 'حدث خطأ أثناء تصدير تقرير المبيعات إلى Excel' };
+  }
+}
+
+/**
+ * 9. Export Sales Report (Daily, Monthly, Yearly) to PDF
+ */
+export async function exportReportToPdf(
+  reportData: {
+    periodType: 'daily' | 'monthly' | 'yearly';
+    periodLabel: string;
+    totalSales: number;
+    totalProfit: number;
+    cashSales: number;
+    creditSales: number;
+    invoicesCount: number;
+    invoices: Invoice[];
+  },
+  options: { storeName: string; currency?: string }
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const currency = options.currency || 'ر.ي';
+    const canvas = document.createElement('canvas');
+    const width = 800;
+    const padding = 32;
+
+    const rowHeight = 32;
+    const headerHeight = 220;
+    const itemsHeight = Math.max(100, reportData.invoices.length * rowHeight);
+    const totalHeight = headerHeight + itemsHeight + 120;
+
+    canvas.width = width;
+    canvas.height = totalHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas 2D context not available');
+
+    // Background
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, totalHeight);
+
+    // Header Background banner
+    ctx.fillStyle = '#065f46';
+    ctx.fillRect(0, 0, width, 85);
+
+    // Title
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 22px Cairo, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(options.storeName || 'بقالة العزي', width / 2, 38);
+
+    const typeTitle =
+      reportData.periodType === 'daily'
+        ? `تقرير المبيعات والأرباح اليومي - ${reportData.periodLabel}`
+        : reportData.periodType === 'monthly'
+        ? `تقرير المبيعات والأرباح الشهري - ${reportData.periodLabel}`
+        : `تقرير المبيعات والأرباح السنوي - ${reportData.periodLabel}`;
+
+    ctx.font = 'bold 15px Cairo, sans-serif';
+    ctx.fillText(typeTitle, width / 2, 68);
+
+    // Metrics Cards
+    ctx.textAlign = 'right';
+    const metricsY = 105;
+
+    // Card 1: Sales
+    ctx.fillStyle = '#f8fafc';
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(padding, metricsY, 165, 80, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '12px Cairo, sans-serif';
+    ctx.fillText('إجمالي المبيعات', padding + 155, metricsY + 26);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 16px Cairo, sans-serif';
+    ctx.fillText(`${formatNumber(reportData.totalSales)} ${currency}`, padding + 155, metricsY + 58);
+
+    // Card 2: Profit
+    ctx.fillStyle = '#f0fdf4';
+    ctx.strokeStyle = '#86efac';
+    ctx.beginPath();
+    ctx.roundRect(padding + 185, metricsY, 165, 80, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#166534';
+    ctx.font = '12px Cairo, sans-serif';
+    ctx.fillText('إجمالي الأرباح', padding + 185 + 155, metricsY + 26);
+    ctx.fillStyle = '#15803d';
+    ctx.font = 'bold 16px Cairo, sans-serif';
+    ctx.fillText(`${formatNumber(reportData.totalProfit)} ${currency}`, padding + 185 + 155, metricsY + 58);
+
+    // Card 3: Cash
+    ctx.fillStyle = '#f8fafc';
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.beginPath();
+    ctx.roundRect(padding + 370, metricsY, 165, 80, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#64748b';
+    ctx.font = '12px Cairo, sans-serif';
+    ctx.fillText('المبيعات النقدية', padding + 370 + 155, metricsY + 26);
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 16px Cairo, sans-serif';
+    ctx.fillText(`${formatNumber(reportData.cashSales)} ${currency}`, padding + 370 + 155, metricsY + 58);
+
+    // Card 4: Credit
+    ctx.fillStyle = '#fef2f2';
+    ctx.strokeStyle = '#fca5a5';
+    ctx.beginPath();
+    ctx.roundRect(padding + 555, metricsY, 180, 80, 8);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#991b1b';
+    ctx.font = '12px Cairo, sans-serif';
+    ctx.fillText('المبيعات الآجلة (ذمم)', padding + 555 + 170, metricsY + 26);
+    ctx.fillStyle = '#dc2626';
+    ctx.font = 'bold 16px Cairo, sans-serif';
+    ctx.fillText(`${formatNumber(reportData.creditSales)} ${currency}`, padding + 555 + 170, metricsY + 58);
+
+    // Table Header
+    const tableTop = metricsY + 105;
+    ctx.fillStyle = '#1e293b';
+    ctx.fillRect(padding, tableTop, width - padding * 2, 34);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px Cairo, sans-serif';
+    ctx.fillText('رقم', width - padding - 15, tableTop + 22);
+    ctx.fillText('العميل', width - padding - 85, tableTop + 22);
+    ctx.fillText('التاريخ والوقت', width - padding - 230, tableTop + 22);
+    ctx.fillText('آخر تعديل', width - padding - 360, tableTop + 22);
+    ctx.fillText('الدفع', width - padding - 470, tableTop + 22);
+    ctx.fillText(`المجموع (${currency})`, width - padding - 570, tableTop + 22);
+    ctx.fillText(`الربح (${currency})`, width - padding - 670, tableTop + 22);
+
+    // Rows
+    let currentY = tableTop + 34;
+    reportData.invoices.forEach((inv, index) => {
+      ctx.fillStyle = index % 2 === 0 ? '#ffffff' : '#f8fafc';
+      ctx.fillRect(padding, currentY, width - padding * 2, rowHeight);
+
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.beginPath();
+      ctx.moveTo(padding, currentY + rowHeight);
+      ctx.lineTo(width - padding, currentY + rowHeight);
+      ctx.stroke();
+
+      ctx.fillStyle = '#1e293b';
+      ctx.font = '12px Cairo, sans-serif';
+      ctx.fillText(`#${inv.number}`, width - padding - 15, currentY + 21);
+      ctx.fillText((inv.customer || 'نقدي').slice(0, 16), width - padding - 85, currentY + 21);
+      ctx.fillText(`${inv.date}`, width - padding - 230, currentY + 21);
+      ctx.fillText(inv.lastModified ? inv.lastModified.slice(0, 14) : '—', width - padding - 360, currentY + 21);
+      ctx.fillText(inv.paymentType === 'credit' ? 'آجل' : 'نقدي', width - padding - 470, currentY + 21);
+      ctx.fillText(formatNumber(inv.total), width - padding - 570, currentY + 21);
+
+      const invProf = inv.profit !== undefined ? inv.profit : Math.round(inv.total * 0.18);
+      ctx.fillStyle = '#16a34a';
+      ctx.fillText(formatNumber(invProf), width - padding - 670, currentY + 21);
+
+      currentY += rowHeight;
+    });
+
+    // Create PDF
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'px',
+      format: [width, totalHeight],
+    });
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.95);
+    pdf.addImage(imgData, 'JPEG', 0, 0, width, totalHeight);
+
+    const cleanLabel = reportData.periodLabel.replace(/[/\\?%*:|"<>]/g, '_');
+    const fileName = `تقرير_${reportData.periodType}_${cleanLabel}.pdf`;
+    const pdfBlob = pdf.output('blob');
+
+    const saveRes = await saveFileToDownloads(pdfBlob, fileName, 'application/pdf');
+    return saveRes;
+  } catch (err) {
+    console.error('Report PDF Export Error:', err);
+    return { success: false, message: 'حدث خطأ أثناء تصدير تقرير المبيعات إلى PDF' };
+  }
+}
+
 
