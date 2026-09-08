@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AndroidStatusBar } from './components/AndroidStatusBar';
-import { AndroidNavBar } from './components/AndroidNavBar';
 import { TopAppBar } from './components/TopAppBar';
 import { QuickEntryCard } from './components/QuickEntryCard';
 import { InvoiceItemsList } from './components/InvoiceItemsList';
@@ -29,7 +27,14 @@ import { sound } from './utils/audio';
 import { printThermalReceipt, printThermalReceiptViaNewWindow, printViaRawBT } from './utils/thermalPrinter';
 import { printDirectWebBluetooth } from './utils/bluetoothPrinter';
 import { renderReceiptToCanvas, downloadReceiptImage, shareReceiptImage } from './utils/receiptCanvas';
+import {
+  exportInvoiceToPdf,
+  exportInvoiceToExcel,
+  exportInvoiceToJpg,
+  shareInvoiceToWhatsAppAsImage,
+} from './utils/exportTools';
 import { LogOut } from 'lucide-react';
+
 
 const INITIAL_CUSTOMER_ACCOUNTS: CustomerAccount[] = [
   {
@@ -1003,7 +1008,7 @@ export default function App() {
     showToast('جاري تجهيز صورة الفاتورة للمشاركة عبر واتساب...');
 
     try {
-      const res = await shareReceiptImage(inv, {
+      const res = await shareInvoiceToWhatsAppAsImage(inv, {
         storeName: settings.storeName,
         storeSubtitle: settings.storeSubtitle,
         storePhone: settings.storePhone,
@@ -1013,24 +1018,73 @@ export default function App() {
 
       if (res.success) {
         sound.playSuccess();
-        if (res.method === 'web-share') {
-          showToast('تمت مشاركة صورة الفاتورة عبر واتساب بنجاح!');
-        } else if (res.method === 'copied') {
-          showToast('تم حفظ ونسخ صورة الفاتورة! يمكنك لصقها وإرسالها كصورة في واتساب');
-        } else {
-          showToast('تم حفظ صورة الفاتورة في الاستوديو لمشاركتها كصورة عبر واتساب');
-        }
+        showToast(res.message);
       } else {
-        showToast('جاري فتح مركز المعاينة لحفظ ومشاركة صورة الفاتورة', 'info');
-        setPreviewModalOpen(true);
+        showToast(res.message, 'info');
       }
     } catch (err) {
       if ((err as Error)?.name !== 'AbortError') {
         console.error('WhatsApp image share error:', err);
-        showToast('جاري فتح نافذة المعاينة لمشاركة صورة الفاتورة', 'info');
-        setPreviewModalOpen(true);
+        showToast('تعذر إكمال مشاركة صورة الفاتورة', 'error');
       }
     }
+  };
+
+  // Export Invoice to PDF
+  const handleExportPdf = async (targetInv?: Invoice) => {
+    const inv = targetInv || currentInvoiceObj;
+    if (!inv || inv.items.length === 0) {
+      showToast('لا توجد أصناف لتصديرها', 'error');
+      return;
+    }
+    if (!targetInv) recordCustomerName(customerName);
+    showToast('جاري إنشاء ملف PDF...');
+    const res = await exportInvoiceToPdf(inv, {
+      storeName: settings.storeName,
+      storeSubtitle: settings.storeSubtitle,
+      storePhone: settings.storePhone,
+      currency: settings.currency,
+      thermalWidth: settings.thermalWidth,
+    });
+    if (res.success) sound.playSuccess();
+    showToast(res.message);
+  };
+
+  // Export Invoice to Excel XLS
+  const handleExportExcel = async (targetInv?: Invoice) => {
+    const inv = targetInv || currentInvoiceObj;
+    if (!inv || inv.items.length === 0) {
+      showToast('لا توجد أصناف لتصديرها', 'error');
+      return;
+    }
+    if (!targetInv) recordCustomerName(customerName);
+    showToast('جاري تجهيز جدول إكسل...');
+    const res = await exportInvoiceToExcel(inv, {
+      storeName: settings.storeName,
+      currency: settings.currency,
+    });
+    if (res.success) sound.playSuccess();
+    showToast(res.message);
+  };
+
+  // Export Invoice to JPG Image
+  const handleExportJpg = async (targetInv?: Invoice) => {
+    const inv = targetInv || currentInvoiceObj;
+    if (!inv || inv.items.length === 0) {
+      showToast('لا توجد أصناف لتصديرها', 'error');
+      return;
+    }
+    if (!targetInv) recordCustomerName(customerName);
+    showToast('جاري حفظ صورة JPG عالية الدقة...');
+    const res = await exportInvoiceToJpg(inv, {
+      storeName: settings.storeName,
+      storeSubtitle: settings.storeSubtitle,
+      storePhone: settings.storePhone,
+      currency: settings.currency,
+      thermalWidth: settings.thermalWidth,
+    });
+    if (res.success) sound.playSuccess();
+    showToast(res.message);
   };
 
   // Export Data Backup (JSON)
@@ -1178,62 +1232,13 @@ export default function App() {
       } flex flex-col justify-center items-center font-sans antialiased`}
       dir="rtl"
     >
-      {/* Container: If isPhoneFrame is true, wrap in realistic Android phone frame with punch hole & borders */}
+      {/* App Main Viewport Container */}
       <div
         id="app-viewport-container"
-        className={`w-full transition-all duration-300 ${
-          isPhoneFrame
-            ? 'max-w-md my-4 sm:my-8 rounded-[40px] shadow-2xl border-[10px] border-slate-800 bg-white dark:bg-slate-900 overflow-hidden ring-1 ring-slate-700/50'
-            : 'max-w-xl min-h-screen bg-white dark:bg-slate-900 shadow-sm flex flex-col'
-        }`}
+        className="w-full max-w-xl min-h-screen bg-white dark:bg-slate-900 shadow-md flex flex-col mx-auto"
       >
-        {/* 1. Android System Status Bar (Clock, Punch hole camera, 5G, Battery) */}
-        <AndroidStatusBar isDark={isDark} />
-
-        {/* Store Brand & Logo Header with Quick Exit */}
-        <div className="px-3 pt-2 pb-1.5 border-b border-slate-100 dark:border-slate-800/80 flex items-center justify-between no-print">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-xl overflow-hidden shadow-xs border border-emerald-500/40 shrink-0 bg-slate-900">
-              <img
-                src="/app-logo.jpg"
-                alt={settings.storeName}
-                referrerPolicy="no-referrer"
-                className="w-full h-full object-cover"
-              />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h1 className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-slate-100 tracking-tight leading-none">
-                  {settings.storeName}
-                </h1>
-                <span className="text-[9px] bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 font-bold px-1.5 py-0.5 rounded-md">
-                  كاشير
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[170px] sm:max-w-xs mt-0.5">
-                {settings.storeSubtitle || 'للمواد الغذائية والاستهلاكية'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            <button
-              id="btn-quick-exit"
-              onClick={() => {
-                sound.playTap();
-                setIsExitModalOpen(true);
-              }}
-              title="الخروج من التطبيق"
-              className="py-1 px-2 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/60 rounded-xl text-xs font-bold transition flex items-center gap-1 active:scale-95 border border-red-200 dark:border-red-900/50"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="text-[11px]">خروج</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 2. Top App Bar matching Screenshot 1 (Actions, Tools, Invoice # & Payment Pill) */}
-        <div className="px-3 pt-1">
+        {/* Top App Bar (Actions, Navigation, Invoice # & Payment Pill) */}
+        <div className="px-3 pt-2">
           <TopAppBar
             invoiceNumber={invoiceNumber}
             paymentType={paymentType}
@@ -1250,11 +1255,19 @@ export default function App() {
             onClearAll={handleClearCurrentInvoice}
             onOpenSettings={() => setActiveTab('settings')}
             onExitApp={() => setIsExitModalOpen(true)}
+            onExportPdf={() => handleExportPdf()}
+            onExportExcel={() => handleExportExcel()}
+            onExportJpg={() => handleExportJpg()}
+            onShareWhatsAppImage={() => handleShareWhatsApp()}
+            storeName={settings.storeName}
+            onOpenCustomers={() => setActiveTab('customers')}
+            onOpenCatalog={() => setActiveTab('catalog')}
+            debtorsCount={customerAccounts.filter((c) => c.balance > 0).length}
           />
         </div>
 
-        {/* 3. Main Screen Viewport Body based on Active Navigation Tab */}
-        <main className="flex-1 p-3 space-y-3 overflow-y-auto max-h-[calc(100vh-145px)]">
+        {/* Main Screen Viewport Body based on Active Navigation Tab */}
+        <main className="flex-1 p-3 space-y-3 overflow-y-auto">
           {activeTab === 'pos' && (
             <>
               {/* Quick Entry Card */}
@@ -1301,6 +1314,9 @@ export default function App() {
                 onOpenPreview={() => setPreviewModalOpen(true)}
                 onShareWhatsApp={handleShareWhatsApp}
                 onReset={handleResetInvoice}
+                onExportPdf={() => handleExportPdf()}
+                onExportExcel={() => handleExportExcel()}
+                onExportJpg={() => handleExportJpg()}
                 currency={settings.currency}
                 isDark={isDark}
               />
@@ -1315,7 +1331,8 @@ export default function App() {
               onDeleteCustomer={handleDeleteCustomer}
               onSelectCustomerForInvoice={handleSelectCustomerForInvoice}
               currency={settings.currency}
-              isDark={isDark}
+              storeName={settings.storeName}
+              onBack={() => setActiveTab('pos')}
             />
           )}
 
@@ -1333,6 +1350,11 @@ export default function App() {
               }}
               currency={settings.currency}
               isDark={isDark}
+              storeName={settings.storeName}
+              storeSubtitle={settings.storeSubtitle}
+              storePhone={settings.storePhone}
+              thermalWidth={settings.thermalWidth}
+              onBack={() => setActiveTab('pos')}
             />
           )}
 
@@ -1363,6 +1385,7 @@ export default function App() {
               }}
               currency={settings.currency}
               isDark={isDark}
+              onBack={() => setActiveTab('pos')}
             />
           )}
 
@@ -1377,20 +1400,10 @@ export default function App() {
               onExportBackup={handleExportBackup}
               onImportBackup={handleImportBackup}
               isDark={isDark}
+              onBack={() => setActiveTab('pos')}
             />
           )}
         </main>
-
-        {/* 4. Android Bottom Navigation Bar (Tabs + 3-Button System Bar) */}
-        <AndroidNavBar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          historyCount={history.length}
-          itemsCount={items.length}
-          debtorsCount={customerAccounts.filter((c) => c.balance > 0).length}
-          isDark={isDark}
-          onDeviceBack={handleDeviceBackButton}
-        />
       </div>
 
       {/* Pure Text Thermal Receipt DOM for @media print (Physical Bluetooth/USB 80mm Printer) */}

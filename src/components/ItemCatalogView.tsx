@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Plus, Search, Trash2, Tag, ShoppingCart } from 'lucide-react';
+import { Plus, Search, Trash2, Tag, ShoppingCart, ArrowRight } from 'lucide-react';
 import { formatNumber } from '../utils/arabic';
 import { sound } from '../utils/audio';
 
@@ -11,6 +11,7 @@ interface ItemCatalogViewProps {
   onDirectAddToInvoice: (name: string, price: number) => void;
   currency?: string;
   isDark?: boolean;
+  onBack?: () => void;
 }
 
 export const ItemCatalogView: React.FC<ItemCatalogViewProps> = ({
@@ -21,6 +22,7 @@ export const ItemCatalogView: React.FC<ItemCatalogViewProps> = ({
   onDirectAddToInvoice,
   currency = 'ر.ي',
   isDark = false,
+  onBack,
 }) => {
   const [search, setSearch] = useState('');
   const [newItemName, setNewItemName] = useState('');
@@ -42,6 +44,26 @@ export const ItemCatalogView: React.FC<ItemCatalogViewProps> = ({
 
   return (
     <div id="item-catalog-container" className="space-y-3 select-none">
+      {/* Return to POS Invoice Button */}
+      {onBack && (
+        <div className="flex items-center justify-between bg-white dark:bg-slate-800/90 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs">
+          <button
+            id="btn-catalog-back-pos"
+            onClick={() => {
+              sound.playTap();
+              onBack();
+            }}
+            className="py-1.5 px-3 bg-purple-600 hover:bg-purple-700 active:scale-95 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs"
+          >
+            <ArrowRight className="w-4 h-4" />
+            <span>العودة لشاشة الفاتورة الرئيسية</span>
+          </button>
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-300 font-mono">
+            {suggestions.length} صنف مسجل
+          </span>
+        </div>
+      )}
+
       {/* Add New Product Card */}
       <div className="bg-white dark:bg-slate-800/90 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs">
         <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200 mb-2 flex items-center gap-1.5">

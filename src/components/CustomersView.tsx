@@ -6,6 +6,7 @@ import {
   Phone,
   ArrowDownLeft,
   ArrowUpRight,
+  ArrowRight,
   Receipt,
   Trash2,
   Calendar,
@@ -19,11 +20,14 @@ import {
   AlertCircle,
   CheckCircle2,
   ShoppingBag,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { CustomerAccount, CustomerTransaction, Invoice, InvoiceItem } from '../types';
 import { formatNumber, parseArabicNumber } from '../utils/arabic';
 import { sound } from '../utils/audio';
 import { printThermalReceipt } from '../utils/thermalPrinter';
+import { exportCustomerStatementToPdf, exportCustomerStatementToExcel } from '../utils/exportTools';
+
 
 interface CustomersViewProps {
   customers: CustomerAccount[];
@@ -33,6 +37,7 @@ interface CustomersViewProps {
   onAddPayment: (customerId: string, amount: number, notes?: string) => void;
   onDeleteCustomer: (customerId: string) => void;
   onSelectCustomerForInvoice: (customerName: string) => void;
+  onBack?: () => void;
 }
 
 export const CustomersView: React.FC<CustomersViewProps> = ({
@@ -43,6 +48,7 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
   onAddPayment,
   onDeleteCustomer,
   onSelectCustomerForInvoice,
+  onBack,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'debtors' | 'settled'>('all');
@@ -191,8 +197,40 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
     });
   };
 
+  const handleExportStatementPdf = async (customer: CustomerAccount) => {
+    sound.playTap();
+    await exportCustomerStatementToPdf(customer, { storeName, currency });
+    sound.playSuccess();
+  };
+
+  const handleExportStatementExcel = async (customer: CustomerAccount) => {
+    sound.playTap();
+    await exportCustomerStatementToExcel(customer, { storeName, currency });
+    sound.playSuccess();
+  };
+
   return (
     <div className="space-y-4 select-none pb-12">
+      {/* Return to POS Invoice Button */}
+      {onBack && (
+        <div className="flex items-center justify-between bg-white dark:bg-slate-800/90 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs">
+          <button
+            id="btn-customers-back-pos"
+            onClick={() => {
+              sound.playTap();
+              onBack();
+            }}
+            className="py-1.5 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs"
+          >
+            <ArrowRight className="w-4 h-4" />
+            <span>العودة لشاشة الفاتورة الرئيسية</span>
+          </button>
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-300 font-mono">
+            {customers.length} عميل
+          </span>
+        </div>
+      )}
+
       {/* 1. Header & Summary Stats */}
       <div className="bg-gradient-to-r from-emerald-700 via-emerald-800 to-teal-900 text-white p-4 rounded-3xl shadow-md">
         <div className="flex items-center justify-between mb-3">
@@ -772,33 +810,55 @@ export const CustomersView: React.FC<CustomersViewProps> = ({
             </div>
 
             {/* Footer Actions */}
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
-              <button
-                onClick={() => handlePrintStatementThermal(selectedLedgerCustomer)}
-                className="py-2 px-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs"
-                title="طباعة كشف الحساب عبر الطابعة الحرارية"
-              >
-                <Printer className="w-3.5 h-3.5" />
-                <span>طباعة حرارية</span>
-              </button>
-              <button
-                onClick={() => handleShareStatement(selectedLedgerCustomer)}
-                className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>إرسال واتساب</span>
-              </button>
-              <button
-                onClick={() => {
-                  sound.playTap();
-                  onDeleteCustomer(selectedLedgerCustomer.id);
-                  setSelectedLedgerCustomer(null);
-                }}
-                className="py-2 px-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-xl transition"
-                title="حذف العميل"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  onClick={() => handlePrintStatementThermal(selectedLedgerCustomer)}
+                  className="py-2 px-3 bg-slate-800 hover:bg-slate-700 active:scale-95 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs"
+                  title="طباعة كشف الحساب عبر الطابعة الحرارية"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>طباعة حرارية</span>
+                </button>
+                <button
+                  onClick={() => handleShareStatement(selectedLedgerCustomer)}
+                  className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>إرسال واتساب</span>
+                </button>
+                <button
+                  onClick={() => {
+                    sound.playTap();
+                    onDeleteCustomer(selectedLedgerCustomer.id);
+                    setSelectedLedgerCustomer(null);
+                  }}
+                  className="py-2 px-3 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/50 rounded-xl transition"
+                  title="حذف العميل"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* PDF and Excel Export Row */}
+              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200 dark:border-slate-700">
+                <button
+                  onClick={() => handleExportStatementPdf(selectedLedgerCustomer)}
+                  className="py-1.5 px-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/50 text-red-700 dark:text-red-300 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 active:scale-95"
+                  title="تصدير كشف الحساب إلى PDF"
+                >
+                  <FileText className="w-3.5 h-3.5 text-red-500" />
+                  <span>تصدير PDF</span>
+                </button>
+                <button
+                  onClick={() => handleExportStatementExcel(selectedLedgerCustomer)}
+                  className="py-1.5 px-2 bg-teal-50 hover:bg-teal-100 dark:bg-teal-950/50 text-teal-700 dark:text-teal-300 font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 active:scale-95"
+                  title="تصدير كشف الحساب إلى Excel"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5 text-teal-500" />
+                  <span>تصدير Excel</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -9,7 +9,8 @@ import {
   Smartphone,
   CheckCircle,
   HelpCircle,
-  Database
+  Database,
+  ArrowRight,
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { sound } from '../utils/audio';
@@ -20,6 +21,7 @@ interface SettingsViewProps {
   onExportBackup: () => void;
   onImportBackup: (e: React.ChangeEvent<HTMLInputElement>) => void;
   isDark?: boolean;
+  onBack?: () => void;
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
@@ -28,6 +30,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onExportBackup,
   onImportBackup,
   isDark = false,
+  onBack,
 }) => {
   const [storeName, setStoreName] = useState(settings.storeName);
   const [storeSubtitle, setStoreSubtitle] = useState(settings.storeSubtitle);
@@ -56,6 +59,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   return (
     <div id="settings-view-container" className="space-y-3.5 select-none text-xs">
+      {/* Return to POS Invoice Button */}
+      {onBack && (
+        <div className="flex items-center justify-between bg-white dark:bg-slate-800/90 p-2.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs">
+          <button
+            id="btn-settings-back-pos"
+            onClick={() => {
+              sound.playTap();
+              onBack();
+            }}
+            className="py-1.5 px-3 bg-slate-700 hover:bg-slate-800 active:scale-95 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-xs"
+          >
+            <ArrowRight className="w-4 h-4" />
+            <span>العودة لشاشة الفاتورة الرئيسية</span>
+          </button>
+          <span className="text-xs font-bold text-slate-600 dark:text-slate-300">
+            إعدادات النظام والطباعة
+          </span>
+        </div>
+      )}
+
       {/* Store Identity Settings */}
       <div className="bg-white dark:bg-slate-800/90 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs space-y-3">
         <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-bold text-sm">

@@ -1,10 +1,29 @@
 import React, { useState } from 'react';
-import { X, Printer, Share2, Copy, Bluetooth, Download, ExternalLink, Image as ImageIcon, Check } from 'lucide-react';
+import {
+  X,
+  Printer,
+  Share2,
+  Copy,
+  Bluetooth,
+  Download,
+  ExternalLink,
+  Image as ImageIcon,
+  Check,
+  FileText,
+  FileSpreadsheet,
+  MessageCircle,
+} from 'lucide-react';
 import { Invoice } from '../types';
 import { formatNumber, formatUnitPrice, parseArabicNumber } from '../utils/arabic';
 import { sound } from '../utils/audio';
 import { downloadReceiptImage, shareReceiptImage, renderReceiptToCanvas } from '../utils/receiptCanvas';
 import { printThermalReceiptViaNewWindow, printViaRawBT, printViaRawBTImage } from '../utils/thermalPrinter';
+import {
+  exportInvoiceToPdf,
+  exportInvoiceToExcel,
+  exportInvoiceToJpg,
+  shareInvoiceToWhatsAppAsImage,
+} from '../utils/exportTools';
 
 interface ThermalPreviewModalProps {
   isOpen: boolean;
@@ -32,19 +51,117 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
   thermalWidth = '80mm',
   onPrint,
   onPrintBluetooth,
-  onShareWhatsApp,
   onCopyText,
 }) => {
-  const [downloadingImage, setDownloadingImage] = useState(false);
+  const [downloading, setDownloading] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [statusNotice, setStatusNotice] = useState<string | null>(null);
 
   const resolvedWidth: '58mm' | '80mm' = thermalWidth === '58mm' ? '58mm' : '80mm';
 
   if (!isOpen) return null;
 
-  const handleDownloadImage = async () => {
+  const showStatus = (msg: string) => {
+    setStatusNotice(msg);
+    setTimeout(() => setStatusNotice(null), 3500);
+  };
+
+  // Export PDF
+  const handleExportPdf = async (action: 'download' | 'share' = 'download') => {
     sound.playTap();
-    setDownloadingImage(true);
+    setDownloading('pdf');
+    const res = await exportInvoiceToPdf(
+      invoice,
+      {
+        storeName,
+        storeSubtitle,
+        storePhone,
+        currency,
+        thermalWidth: resolvedWidth,
+      },
+      action
+    );
+    setDownloading(null);
+    if (res.success) {
+      sound.playSuccess();
+      showStatus(res.message);
+    } else {
+      sound.playError();
+      showStatus(res.message);
+    }
+  };
+
+  // Export Excel XLS
+  const handleExportExcel = async (action: 'download' | 'share' = 'download') => {
+    sound.playTap();
+    setDownloading('excel');
+    const res = await exportInvoiceToExcel(
+      invoice,
+      {
+        storeName,
+        currency,
+      },
+      action
+    );
+    setDownloading(null);
+    if (res.success) {
+      sound.playSuccess();
+      showStatus(res.message);
+    } else {
+      sound.playError();
+      showStatus(res.message);
+    }
+  };
+
+  // Export JPG
+  const handleExportJpg = async (action: 'download' | 'share' = 'download') => {
+    sound.playTap();
+    setDownloading('jpg');
+    const res = await exportInvoiceToJpg(
+      invoice,
+      {
+        storeName,
+        storeSubtitle,
+        storePhone,
+        currency,
+        thermalWidth: resolvedWidth,
+      },
+      action
+    );
+    setDownloading(null);
+    if (res.success) {
+      sound.playSuccess();
+      showStatus(res.message);
+    } else {
+      sound.playError();
+      showStatus(res.message);
+    }
+  };
+
+  // WhatsApp as Image (Automatic)
+  const handleWhatsAppImageShare = async () => {
+    sound.playTap();
+    setDownloading('whatsapp');
+    const res = await shareInvoiceToWhatsAppAsImage(invoice, {
+      storeName,
+      storeSubtitle,
+      storePhone,
+      currency,
+      thermalWidth: resolvedWidth,
+    });
+    setDownloading(null);
+    if (res.success) {
+      sound.playSuccess();
+      showStatus(res.message);
+    } else {
+      showStatus(res.message);
+    }
+  };
+
+  // Download PNG Image
+  const handleDownloadPng = async () => {
+    sound.playTap();
+    setDownloading('png');
     try {
       await downloadReceiptImage(invoice, {
         storeName,
@@ -54,27 +171,38 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
         thermalWidth: resolvedWidth,
       });
       sound.playSuccess();
+      showStatus('تم حفظ صورة الإيصال (PNG) في الاستوديو');
     } catch (e) {
-      console.error('Download image error:', e);
+      console.error('Download PNG error:', e);
       sound.playError();
     } finally {
-      setDownloadingImage(false);
+      setDownloading(null);
     }
   };
 
-  const handleShareImage = async () => {
+  // RawBT Image print (100% Arabic fidelity)
+  const handleRawBtImage = () => {
     sound.playTap();
     try {
-      const shared = await shareReceiptImage(invoice, {
+      const canvas = renderReceiptToCanvas(invoice, {
         storeName,
         storeSubtitle,
         storePhone,
         currency,
         thermalWidth: resolvedWidth,
       });
-      if (shared) sound.playSuccess();
+      const dataUrl = canvas.toDataURL('image/png');
+      const ok = printViaRawBTImage(dataUrl);
+      if (ok) {
+        sound.playSuccess();
+        showStatus('تم إرسال صورة الإيصال لتطبيق RawBT للطباعة الحرارية');
+      } else {
+        sound.playError();
+        showStatus('تعذر فتح تطبيق RawBT');
+      }
     } catch (e) {
-      console.error('Share image error:', e);
+      console.error('Error printing image via RawBT:', e);
+      sound.playError();
     }
   };
 
@@ -100,26 +228,6 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
     });
   };
 
-  const handleRawBtImage = () => {
-    sound.playTap();
-    try {
-      const canvas = renderReceiptToCanvas(invoice, {
-        storeName,
-        storeSubtitle,
-        storePhone,
-        currency,
-        thermalWidth: resolvedWidth,
-      });
-      const dataUrl = canvas.toDataURL('image/png');
-      const ok = printViaRawBTImage(dataUrl);
-      if (ok) sound.playSuccess();
-      else sound.playError();
-    } catch (e) {
-      console.error('Error printing image via RawBT:', e);
-      sound.playError();
-    }
-  };
-
   const handleCopy = () => {
     sound.playTap();
     onCopyText();
@@ -130,73 +238,87 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
   return (
     <div
       id="thermal-preview-backdrop"
-      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 no-print"
+      className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 no-print select-none"
       onClick={onClose}
     >
       <div
         id="thermal-preview-card"
         onClick={(e) => e.stopPropagation()}
-        className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col max-h-[94vh]"
+        className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col max-h-[95vh]"
       >
-        {/* Modal Header */}
-        <div className="bg-slate-100 dark:bg-slate-800 px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-slate-800 dark:text-slate-200 font-bold text-xs sm:text-sm">
-            <Printer className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>مركز الطباعة الحرارية والمشاركة</span>
+        {/* Header */}
+        <div className="p-3.5 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 rounded-xl">
+              <Printer className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
+                مركز الطباعة والتصدير والمشاركة
+              </h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                فاتورة #{invoice.number} • عرض الورق: {resolvedWidth}
+              </p>
+            </div>
           </div>
           <button
-            onClick={() => {
-              sound.playTap();
-              onClose();
-            }}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+            onClick={onClose}
+            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Paper Receipt Simulation */}
-        <div className="p-3 sm:p-4 overflow-y-auto flex-1 bg-slate-100 dark:bg-slate-950/60 flex justify-center">
-          <div className="w-full max-w-[310px] bg-white text-slate-900 p-4 shadow-md font-mono text-xs border border-slate-300 relative select-text rounded-xs">
+        {/* Status Notification */}
+        {statusNotice && (
+          <div className="bg-emerald-600 text-white text-xs px-3 py-2 text-center font-bold animate-pulse">
+            {statusNotice}
+          </div>
+        )}
+
+        {/* Realistic Thermal Receipt Paper Container */}
+        <div className="flex-1 overflow-y-auto p-4 bg-slate-100 dark:bg-slate-950 flex justify-center">
+          <div
+            id="receipt-paper"
+            style={{ width: resolvedWidth === '58mm' ? '280px' : '340px' }}
+            className="bg-white text-black p-4 rounded-xl shadow-lg border border-slate-300 font-mono text-xs leading-relaxed select-text"
+          >
             {/* Store Header */}
-            <div className="text-center font-bold text-base tracking-tight text-slate-950 mb-1">
-              {storeName}
-            </div>
-            <div className="text-center text-[11px] text-slate-600 mb-1">
-              {storeSubtitle}
-            </div>
-            {storePhone && (
-              <div className="text-center text-[11px] text-slate-600 mb-1">
-                هاتف: {storePhone}
-              </div>
-            )}
-
-            <div className="my-2 border-b border-dashed border-slate-400"></div>
-
-            {/* Meta */}
-            <div className="flex justify-between items-center text-[11px] my-1">
-              <span>فاتورة #: <strong>{invoice.number}</strong></span>
-              <span className="text-[11px]">{invoice.time} {invoice.date}</span>
-            </div>
-            <div className="my-1 text-[11px]">
-              العميل: <strong>{invoice.customer || 'عميل نقدي'}</strong> ({invoice.paymentType === 'credit' ? 'آجل' : 'نقدي'})
+            <div className="text-center space-y-1 mb-3">
+              <h2 className="text-lg font-black tracking-tight">{storeName}</h2>
+              <p className="text-[11px] text-slate-700">{storeSubtitle}</p>
+              {storePhone && <p className="text-[11px] text-slate-700">هاتف: {storePhone}</p>}
             </div>
 
             <div className="my-2 border-b border-dashed border-slate-400"></div>
 
-            {/* Items List */}
-            <div className="space-y-1.5 my-1">
+            {/* Metadata */}
+            <div className="flex justify-between text-[11px] my-1 font-sans">
+              <span>فاتورة #: {invoice.number}</span>
+              <span>{invoice.time} {invoice.date}</span>
+            </div>
+            <div className="flex justify-between text-[11px] my-1 font-sans">
+              <span>العميل: {invoice.customer || 'نقدي'}</span>
+              <span className="font-bold">
+                {invoice.paymentType === 'credit' ? 'آجل (ذمة)' : 'نقدي'}
+              </span>
+            </div>
+
+            <div className="my-2 border-b border-dashed border-slate-400"></div>
+
+            {/* Items */}
+            <div className="space-y-1.5 my-2">
               {invoice.items.length === 0 ? (
-                <div className="text-center py-2 text-slate-400">لا توجد أصناف</div>
+                <div className="text-center text-slate-400 py-3">-- لا توجد أصناف --</div>
               ) : (
-                invoice.items.map((item, idx) => {
-                  const qty = parseArabicNumber(item.qty) || 1;
-                  const total = parseArabicNumber(item.total);
+                invoice.items.map((it, idx) => {
+                  const qty = it.qty || 1;
+                  const total = parseArabicNumber(it.total) || 0;
                   const unitPrice = formatUnitPrice(qty > 0 ? total / qty : 0);
                   return (
-                    <div key={idx} className="border-b border-dotted border-slate-300 pb-1">
-                      <div className="font-bold text-[12px] text-slate-900">
-                        {idx + 1}. {item.name || 'صنف'}
+                    <div key={idx} className="text-xs">
+                      <div className="font-bold text-slate-950 font-sans">
+                        {idx + 1}. {it.name || 'صنف'}
                       </div>
                       <div className="flex justify-between items-center text-[11px] text-slate-700 mt-0.5">
                         <span>الكمية: {qty} × {unitPrice}</span>
@@ -213,7 +335,7 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
             <div className="my-2 border-b border-dashed border-slate-400"></div>
 
             {/* Totals */}
-            <div className="flex justify-between items-center font-bold text-[13px] text-slate-950 my-1">
+            <div className="flex justify-between items-center font-black text-sm text-slate-950 my-1">
               <span>الإجمالي الكلي:</span>
               <span>{formatNumber(invoice.total)} {currency}</span>
             </div>
@@ -232,60 +354,98 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
         </div>
 
         {/* Modal Actions - Multi-Tier Printing Hub */}
-        <div className="p-3 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-700 space-y-2">
-          {/* Row 1: Primary Thermal Print & Save PNG Image */}
-          <div className="grid grid-cols-2 gap-2">
+        <div className="p-3 bg-slate-50 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-700 space-y-2.5">
+          {/* Section 1: Multi-Format Exports (PDF, Excel, JPG, WhatsApp Image) */}
+          <div className="grid grid-cols-4 gap-1.5">
+            {/* WhatsApp Automatic Image */}
+            <button
+              onClick={handleWhatsAppImageShare}
+              disabled={downloading !== null}
+              className="py-2 px-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition flex flex-col items-center justify-center gap-1 shadow-xs active:scale-95 disabled:opacity-50"
+              title="مشاركة صورة الفاتورة تلقائياً عبر واتساب"
+            >
+              <MessageCircle className="w-4 h-4" />
+              <span>واتساب (صورة)</span>
+            </button>
+
+            {/* PDF Export */}
+            <button
+              onClick={() => handleExportPdf('download')}
+              disabled={downloading !== null}
+              className="py-2 px-1 bg-red-600 hover:bg-red-700 text-white rounded-xl text-[11px] font-bold transition flex flex-col items-center justify-center gap-1 shadow-xs active:scale-95 disabled:opacity-50"
+              title="تصدير ملف PDF عالي الجودة"
+            >
+              <FileText className="w-4 h-4" />
+              <span>تصدير PDF</span>
+            </button>
+
+            {/* Excel XLS Export */}
+            <button
+              onClick={() => handleExportExcel('download')}
+              disabled={downloading !== null}
+              className="py-2 px-1 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[11px] font-bold transition flex flex-col items-center justify-center gap-1 shadow-xs active:scale-95 disabled:opacity-50"
+              title="تصدير جدول بيانات إكسل XLS"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>تصدير Excel</span>
+            </button>
+
+            {/* JPG Export */}
+            <button
+              onClick={() => handleExportJpg('download')}
+              disabled={downloading !== null}
+              className="py-2 px-1 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-[11px] font-bold transition flex flex-col items-center justify-center gap-1 shadow-xs active:scale-95 disabled:opacity-50"
+              title="تصدير صورة JPG عالية الدقة"
+            >
+              <ImageIcon className="w-4 h-4" />
+              <span>صورة JPG</span>
+            </button>
+          </div>
+
+          {/* Section 2: Thermal Printing Suite */}
+          <div className="grid grid-cols-3 gap-2">
+            {/* Direct Thermal Print */}
             <button
               onClick={() => {
                 sound.playTap();
                 onPrint();
               }}
-              className="py-2.5 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+              className="py-2.5 px-2 bg-slate-900 hover:bg-slate-800 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+              title="طباعة حرارية فورية عبر نظام التشغيل"
             >
               <Printer className="w-4 h-4" />
               <span>طباعة فورية</span>
             </button>
 
-            <button
-              onClick={handleDownloadImage}
-              disabled={downloadingImage}
-              className="py-2.5 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
-              title="حفظ الإيصال كصورة لطباعتها بأي تطبيق طابعة حرارية"
-            >
-              <Download className="w-4 h-4" />
-              <span>{downloadingImage ? 'جاري التوليد...' : 'حفظ كصورة (PNG)'}</span>
-            </button>
-          </div>
-
-          {/* Row 2: Direct Bluetooth & RawBT Image (Guaranteed Arabic) */}
-          <div className="grid grid-cols-2 gap-2">
+            {/* Direct Bluetooth */}
             <button
               onClick={() => {
                 sound.playTap();
                 if (onPrintBluetooth) onPrintBluetooth();
               }}
-              className="py-2 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
-              title="الاتصال المباشر بطابعات البلوتوث عبر Web Bluetooth"
+              className="py-2.5 px-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+              title="الاتصال المباشر بطابعات البلوتوث"
             >
               <Bluetooth className="w-4 h-4" />
-              <span>طابعة بلوتوث مباشرة</span>
+              <span>طابعة بلوتوث</span>
             </button>
 
+            {/* RawBT Image (Guaranteed Arabic) */}
             <button
               onClick={handleRawBtImage}
-              className="py-2 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
+              className="py-2.5 px-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs active:scale-95"
               title="طباعة الإيصال كصورة عبر RawBT لضمان وضوح الحروف العربية 100% دون تقطيع"
             >
               <ImageIcon className="w-4 h-4" />
-              <span>RawBT صورة (عربي 100%)</span>
+              <span>RawBT صورة</span>
             </button>
           </div>
 
-          {/* Row 3: RawBT Text, Standalone Window, WhatsApp, Share, Copy */}
-          <div className="grid grid-cols-5 gap-1.5">
+          {/* Section 3: Extra Tools (RawBT Text, Standalone Window, PNG Download, Copy) */}
+          <div className="grid grid-cols-4 gap-1.5 pt-0.5">
             <button
               onClick={handleRawBtApp}
-              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-0.5"
+              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1"
               title="إرسال نص الفاتورة لتطبيق RawBT"
             >
               <span>RawBT نص</span>
@@ -293,40 +453,30 @@ export const ThermalPreviewModal: React.FC<ThermalPreviewModalProps> = ({
 
             <button
               onClick={handleOpenNewWindow}
-              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-0.5"
+              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1"
               title="فتح صفحة مستقلة للطباعة"
             >
-              <ExternalLink className="w-3 h-3" />
-              <span>نافذة</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>نافذة طباعة</span>
             </button>
 
             <button
-              onClick={handleShareImage}
-              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-0.5"
-              title="مشاركة صورة الإيصال"
+              onClick={handleDownloadPng}
+              disabled={downloading !== null}
+              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1"
+              title="حفظ صورة PNG"
             >
-              <Share2 className="w-3 h-3" />
-              <span>مشاركة</span>
-            </button>
-
-            <button
-              onClick={() => {
-                sound.playTap();
-                onShareWhatsApp();
-              }}
-              className="py-1.5 px-1 bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-0.5"
-              title="إرسال عبر واتساب"
-            >
-              <span>واتساب</span>
+              <Download className="w-3.5 h-3.5" />
+              <span>حفظ PNG</span>
             </button>
 
             <button
               onClick={handleCopy}
-              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[10px] font-bold transition flex items-center justify-center gap-0.5"
-              title="نسخ نص الفاتورة"
+              className="py-1.5 px-1 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1"
+              title="نسخ نص الفاتورة للحافظة"
             >
-              {copied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-              <span>{copied ? 'تم' : 'نسخ'}</span>
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? 'تم النسخ' : 'نسخ نص'}</span>
             </button>
           </div>
         </div>
