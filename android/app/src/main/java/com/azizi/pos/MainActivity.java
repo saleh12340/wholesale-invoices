@@ -74,14 +74,14 @@ public class MainActivity extends BridgeActivity {
             if (adapter == null) { showMessage("البلوتوث غير متوفر", "هذا الهاتف لا يدعم البلوتوث."); return; }
             if (!adapter.isEnabled()) {
                 new AlertDialog.Builder(this).setTitle("تشغيل البلوتوث")
-                        .setMessage("يجب تشغيل البلوتوث لاختيار الطابعة الحرارية.")
+                        .setMessage("يجب تشغيل البلوتوث لاختيار الطابعة الحرارية الصغيرة.")
                         .setPositiveButton("فتح إعدادات البلوتوث", (d,w) -> openBluetoothSettings())
                         .setNegativeButton("إلغاء", null).show(); return;
             }
             Set<BluetoothDevice> bonded = adapter.getBondedDevices();
             if (bonded == null || bonded.isEmpty()) {
                 new AlertDialog.Builder(this).setTitle("لا توجد طابعة مقترنة")
-                        .setMessage("قم بإقران الطابعة الحرارية من إعدادات البلوتوث أولاً، ثم عد للتطبيق.")
+                        .setMessage("قم بإقران الطابعة الحرارية الصغيرة من إعدادات البلوتوث أولاً، ثم عد للتطبيق.")
                         .setPositiveButton("فتح إعدادات البلوتوث", (d,w) -> openBluetoothSettings())
                         .setNegativeButton("إلغاء", null).show(); return;
             }
@@ -90,9 +90,9 @@ public class MainActivity extends BridgeActivity {
             for (int i=0;i<devices.size();i++) {
                 String name;
                 try { name = devices.get(i).getName(); } catch (SecurityException e) { name = null; }
-                names[i] = (name == null || name.trim().isEmpty()) ? "طابعة بلوتوث" : name;
+                names[i] = (name == null || name.trim().isEmpty()) ? "طابعة حرارية" : name;
             }
-            new AlertDialog.Builder(this).setTitle("اختر الطابعة الحرارية")
+            new AlertDialog.Builder(this).setTitle("اختر الطابعة الحرارية الصغيرة")
                     .setItems(names, (dialog, which) -> printToDevice(devices.get(which), imageBase64, preferredWidth))
                     .setNeutralButton("إعدادات البلوتوث", (d,w) -> openBluetoothSettings())
                     .setNegativeButton("إلغاء", null).show();
@@ -161,6 +161,23 @@ public class MainActivity extends BridgeActivity {
         getBridge().getWebView().post(() -> getBridge().getWebView().evaluateJavascript(js,null));
     }
 
+    private String normalizePhone(String phone) {
+        if (phone == null) return "";
+        String p = phone.replaceAll("[^0-9]", "");
+        if (p.startsWith("00")) p = p.substring(2);
+        if (p.startsWith("0") && p.length() == 10) p = "967" + p.substring(1);
+        else if (p.length() == 9 && p.startsWith("7")) p = "967" + p;
+        return p;
+    }
+
+    private Uri createShareFile(byte[] data, String fileName, String mimeType) throws Exception {
+        File dir = new File(getCacheDir(), "whatsapp-share");
+        if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("Cannot create share cache");
+        File file = new File(dir, fileName.replaceAll("[^A-Za-z0-9._-]", "_") + ".share");
+        try (FileOutputStream out = new FileOutputStream(file)) { out.write(data); }
+        return FileProvider.getUriForFile(this, getPackageName()+".fileprovider", file);
+    }
+
     public class NativeBridge {
         @JavascriptInterface public boolean requestStoragePermission() {
             if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q) return true;
@@ -181,24 +198,55 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface public boolean saveFileToDownloads(String base64,String fileName,String mimeType) {
             try {
                 byte[] data=android.util.Base64.decode(base64,android.util.Base64.DEFAULT);
-                String folder="Downloads/بقالة العزي للمواد الغذائية/";
+                String folder=Environment.DIRECTORY_DOWNLOADS+"/بقالة العزي للمواد الغذائية";
                 if(Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q){
-                    ContentValues v=new ContentValues(); v.put(MediaStore.Downloads.DISPLAY_NAME,fileName); v.put(MediaStore.Downloads.MIME_TYPE,mimeType); v.put(MediaStore.Downloads.RELATIVE_PATH,folder); v.put(MediaStore.Downloads.IS_PENDING,1);
-                    Uri uri=getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,v); if(uri==null)return false;
+                    ContentValues v=new ContentValues();
+                    v.put(MediaStore.Downloads.DISPLAY_NAME,fileName);
+                    v.put(MediaStore.Downloads.MIME_TYPE,mimeType);
+                    v.put(MediaStore.Downloads.RELATIVE_PATH,folder);
+                    v.put(MediaStore.Downloads.IS_PENDING,1);
+                    Uri uri=getContentResolver().insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI,v);
+                    if(uri==null)return false;
                     try(OutputStream out=getContentResolver().openOutputStream(uri)){if(out==null)throw new IllegalStateException();out.write(data);}
-                    v.clear();v.put(MediaStore.Downloads.IS_PENDING,0);getContentResolver().update(uri,v,null,null);lastSavedUri=uri;return true;
+                    ContentValues done=new ContentValues();done.put(MediaStore.Downloads.IS_PENDING,0);getContentResolver().update(uri,done,null,null);
+                    lastSavedUri=uri;return true;
                 }
                 if(ContextCompat.checkSelfPermission(MainActivity.this,Manifest.permission.WRITE_EXTERNAL_STORAGE)!=PackageManager.PERMISSION_GRANTED){requestStoragePermission();return false;}
                 File dir=new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),"بقالة العزي للمواد الغذائية");
-                if(!dir.exists()&&!dir.mkdirs())return false; File target=new File(dir,fileName); try(FileOutputStream out=new FileOutputStream(target)){out.write(data);}
+                if(!dir.exists()&&!dir.mkdirs())return false;
+                File target=new File(dir,fileName);
+                try(FileOutputStream out=new FileOutputStream(target)){out.write(data);}
                 lastSavedUri=FileProvider.getUriForFile(MainActivity.this,getPackageName()+".fileprovider",target);return true;
             }catch(Exception e){return false;}
         }
         @JavascriptInterface public boolean openLastSavedFile(String fileName,String mimeType) {
             try { Uri uri=lastSavedUri;
-                if(uri==null&&Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q){String sel=MediaStore.Downloads.DISPLAY_NAME+"=? AND "+MediaStore.Downloads.RELATIVE_PATH+"=?";String[] args={fileName,"Downloads/بقالة العزي للمواد الغذائية/"};try(android.database.Cursor c=getContentResolver().query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,new String[]{MediaStore.Downloads._ID},sel,args,null)){if(c!=null&&c.moveToFirst())uri=Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI,String.valueOf(c.getLong(c.getColumnIndexOrThrow(MediaStore.Downloads._ID))));}}
-                if(uri==null)return false;Intent i=new Intent(Intent.ACTION_VIEW);i.setDataAndType(uri,mimeType==null?"application/octet-stream":mimeType);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_ACTIVITY_NEW_TASK);startActivity(i);return true;
+                if(uri==null&&Build.VERSION.SDK_INT>=Build.VERSION_CODES.Q){
+                    String sel=MediaStore.Downloads.DISPLAY_NAME+"=? AND "+MediaStore.Downloads.RELATIVE_PATH+"=?";
+                    String[] args={fileName,Environment.DIRECTORY_DOWNLOADS+"/بقالة العزي للمواد الغذائية"};
+                    try(android.database.Cursor c=getContentResolver().query(MediaStore.Downloads.EXTERNAL_CONTENT_URI,new String[]{MediaStore.Downloads._ID},sel,args,null)){
+                        if(c!=null&&c.moveToFirst())uri=Uri.withAppendedPath(MediaStore.Downloads.EXTERNAL_CONTENT_URI,String.valueOf(c.getLong(c.getColumnIndexOrThrow(MediaStore.Downloads._ID))));
+                    }
+                }
+                if(uri==null)return false;
+                Intent i=new Intent(Intent.ACTION_VIEW);i.setDataAndType(uri,mimeType==null?"application/octet-stream":mimeType);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_ACTIVITY_NEW_TASK);startActivity(i);return true;
             }catch(Exception e){return false;}
+        }
+        @JavascriptInterface public boolean shareFileToWhatsApp(String base64,String fileName,String mimeType,String phone,String text) {
+            try {
+                byte[] data=android.util.Base64.decode(base64,android.util.Base64.DEFAULT);
+                Uri uri=createShareFile(data,fileName,mimeType);
+                Intent send=new Intent(Intent.ACTION_SEND);
+                send.setType(mimeType==null?"application/octet-stream":mimeType);
+                send.putExtra(Intent.EXTRA_STREAM,uri);
+                if(text!=null&&!text.isEmpty())send.putExtra(Intent.EXTRA_TEXT,text);
+                String p=normalizePhone(phone);
+                if(p.length()>0)send.putExtra("jid",p+"@s.whatsapp.net");
+                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_ACTIVITY_NEW_TASK);
+                try { send.setPackage("com.whatsapp"); startActivity(send); }
+                catch(Exception noWhatsApp) { send.setPackage(null); startActivity(Intent.createChooser(send,"مشاركة عبر واتساب أو تطبيق آخر")); }
+                return true;
+            } catch(Exception e) { toastToWeb("تعذر إرفاق الملف بواتساب: "+(e.getMessage()==null?"خطأ غير معروف":e.getMessage())); return false; }
         }
     }
 
