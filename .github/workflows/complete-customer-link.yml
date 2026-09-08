@@ -1,85 +1,63 @@
 name: Complete Customer Invoice Links
-
 on:
   push:
     branches: [main]
-
 permissions:
   contents: write
-
 jobs:
   patch:
-    if: ${{ !contains(github.event.head_commit.message, '[customer-link-done]') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Patch customer invoice linkage
-        shell: python
+      - name: Patch App.tsx
         run: |
+          python3 <<'PY'
           from pathlib import Path
-          p = Path('src/App.tsx')
-          s = p.read_text(encoding='utf-8')
+          p=Path('src/App.tsx')
+          s=p.read_text(encoding='utf-8')
           if 'customerId: selectedCustomerAccount?.id' in s:
-              print('Customer linkage already patched')
+              print('already patched')
               raise SystemExit(0)
-
-          old_obj = "const currentInvoiceObj: Invoice = { id: `inv-${invoiceNumber}`, number: invoiceNumber, customer: customerName || 'عميل نقدي', date: dateStr || new Date().toLocaleDateString('ar-YE'), time: timeStr || new Date().toLocaleTimeString('ar-YE'), timestamp: Date.now(), items: [...items], total: grandTotal, paymentType };"
-          new_obj = "const selectedCustomerAccount = customerAccounts.find((c) => c.name.trim().toLowerCase() === (customerName || '').trim().toLowerCase());\n  const currentInvoiceObj: Invoice = { id: `inv-${invoiceNumber}`, number: invoiceNumber, customer: customerName || 'عميل نقدي', customerId: selectedCustomerAccount?.id, customerPhone: selectedCustomerAccount?.phone, date: dateStr || new Date().toLocaleDateString('ar-YE'), time: timeStr || new Date().toLocaleTimeString('ar-YE'), timestamp: Date.now(), items: [...items], total: grandTotal, paymentType };"
-          if old_obj not in s:
-              raise SystemExit('currentInvoiceObj pattern not found')
-          s = s.replace(old_obj, new_obj, 1)
-
-          old_invoice = "const invoiceToSave: Invoice = { id: `inv-${invoiceNumber}-${now}`, number: invoiceNumber, customer: customerName || 'عميل نقدي', date: nowStrDate, time: nowStrTime, timestamp: now, lastModified: modifiedLabel, lastModifiedTimestamp: now, items: [...items], total: grandTotal, paymentType };"
-          new_invoice = "const invoiceToSave: Invoice = { id: `inv-${invoiceNumber}-${now}`, number: invoiceNumber, customer: customerName || 'عميل نقدي', customerId: selectedCustomerAccount?.id, customerPhone: selectedCustomerAccount?.phone, date: nowStrDate, time: nowStrTime, timestamp: now, lastModified: modifiedLabel, lastModifiedTimestamp: now, items: [...items], total: grandTotal, paymentType };"
-          if old_invoice not in s:
-              raise SystemExit('invoiceToSave pattern not found')
-          s = s.replace(old_invoice, new_invoice, 1)
-
-          start = s.find("    if (paymentType === 'credit' && customerName.trim() && customerName.trim() !== 'عميل نقدي') {")
-          end = s.find("    sound.playSuccess();", start)
-          if start < 0 or end < 0:
-              raise SystemExit('customer credit block not found')
-          replacement = '''    if (customerName.trim() && customerName.trim() !== 'عميل نقدي') {
+          old="const currentInvoiceObj: Invoice = { id: `inv-${invoiceNumber}`, number: invoiceNumber, customer: customerName || 'عميل نقدي', date: dateStr || new Date().toLocaleDateString('ar-YE'), time: timeStr || new Date().toLocaleTimeString('ar-YE'), timestamp: Date.now(), items: [...items], total: grandTotal, paymentType };"
+          new="const selectedCustomerAccount = customerAccounts.find((c) => c.name.trim().toLowerCase() === (customerName || '').trim().toLowerCase());\n  const currentInvoiceObj: Invoice = { id: `inv-${invoiceNumber}`, number: invoiceNumber, customer: customerName || 'عميل نقدي', customerId: selectedCustomerAccount?.id, customerPhone: selectedCustomerAccount?.phone, date: dateStr || new Date().toLocaleDateString('ar-YE'), time: timeStr || new Date().toLocaleTimeString('ar-YE'), timestamp: Date.now(), items: [...items], total: grandTotal, paymentType };"
+          if old not in s: raise SystemExit('currentInvoiceObj not found')
+          s=s.replace(old,new,1)
+          old2="const invoiceToSave: Invoice = { id: `inv-${invoiceNumber}-${now}`, number: invoiceNumber, customer: customerName || 'عميل نقدي', date: nowStrDate, time: nowStrTime, timestamp: now, lastModified: modifiedLabel, lastModifiedTimestamp: now, items: [...items], total: grandTotal, paymentType };"
+          new2="const invoiceToSave: Invoice = { id: `inv-${invoiceNumber}-${now}`, number: invoiceNumber, customer: customerName || 'عميل نقدي', customerId: selectedCustomerAccount?.id, customerPhone: selectedCustomerAccount?.phone, date: nowStrDate, time: nowStrTime, timestamp: now, lastModified: modifiedLabel, lastModifiedTimestamp: now, items: [...items], total: grandTotal, paymentType };"
+          if old2 not in s: raise SystemExit('invoiceToSave not found')
+          s=s.replace(old2,new2,1)
+          start=s.find("    if (paymentType === 'credit' && customerName.trim() && customerName.trim() !== 'عميل نقدي') {")
+          end=s.find("    sound.playSuccess();",start)
+          if start<0 or end<0: raise SystemExit('credit block not found')
+          block='''    if (customerName.trim() && customerName.trim() !== 'عميل نقدي') {
       const cName = customerName.trim();
       const existing = customerAccounts.find((c) => c.name.toLowerCase() === cName.toLowerCase());
       const previousInvoice = existingIndex !== -1 ? history[existingIndex] : undefined;
       const previousTxAmount = previousInvoice?.paymentType === 'credit' ? (previousInvoice.total || 0) : 0;
       const baseBalance = existing ? existing.balance - previousTxAmount : 0;
       const linkedInvoiceIds = Array.from(new Set([...(existing?.invoiceIds || []).filter((id) => id !== previousInvoice?.id), invoiceToSave.id]));
-      const oldTransactions = existing?.transactions || [];
-      const cleanedTransactions = previousInvoice
-        ? oldTransactions.filter((t) => t.invoiceId !== previousInvoice.id && t.invoiceNumber !== previousInvoice.number)
-        : oldTransactions;
+      const cleanedTransactions = previousInvoice ? (existing?.transactions || []).filter((t) => t.invoiceId !== previousInvoice.id && t.invoiceNumber !== previousInvoice.number) : (existing?.transactions || []);
       let nextAccounts: CustomerAccount[];
       if (paymentType === 'credit') {
         const tx: CustomerTransaction = { id: `tx-${now}-${Math.random().toString(36).substring(2, 6)}`, date: nowStrDate, time: nowStrTime, timestamp: now, type: 'invoice_credit', amount: grandTotal, balanceAfter: baseBalance + grandTotal, invoiceNumber, invoiceId: invoiceToSave.id, notes: `فاتورة مبيعات آجل #${invoiceNumber} (${items.length} أصناف)` };
-        if (existing) nextAccounts = customerAccounts.map((c) => c.id !== existing.id ? c : { ...c, phone: c.phone || invoiceToSave.customerPhone, balance: baseBalance + grandTotal, invoiceIds: linkedInvoiceIds, transactions: [tx, ...cleanedTransactions] });
-        else nextAccounts = [{ id: `cust-${now}`, name: cName, phone: invoiceToSave.customerPhone, balance: grandTotal, createdAt: `${nowStrDate} ${nowStrTime}`, transactions: [tx], invoiceIds: linkedInvoiceIds }, ...customerAccounts];
+        nextAccounts = existing ? customerAccounts.map((c) => c.id !== existing.id ? c : { ...c, phone: c.phone || invoiceToSave.customerPhone, balance: baseBalance + grandTotal, invoiceIds: linkedInvoiceIds, transactions: [tx, ...cleanedTransactions] }) : [{ id: `cust-${now}`, name: cName, phone: invoiceToSave.customerPhone, balance: grandTotal, createdAt: `${nowStrDate} ${nowStrTime}`, transactions: [tx], invoiceIds: linkedInvoiceIds }, ...customerAccounts];
       } else {
-        if (existing) nextAccounts = customerAccounts.map((c) => c.id !== existing.id ? c : { ...c, phone: c.phone || invoiceToSave.customerPhone, invoiceIds: linkedInvoiceIds, balance: baseBalance, transactions: cleanedTransactions });
-        else nextAccounts = [{ id: `cust-${now}`, name: cName, phone: invoiceToSave.customerPhone, balance: 0, createdAt: `${nowStrDate} ${nowStrTime}`, transactions: [], invoiceIds: linkedInvoiceIds }, ...customerAccounts];
+        nextAccounts = existing ? customerAccounts.map((c) => c.id !== existing.id ? c : { ...c, phone: c.phone || invoiceToSave.customerPhone, invoiceIds: linkedInvoiceIds, balance: baseBalance, transactions: cleanedTransactions }) : [{ id: `cust-${now}`, name: cName, phone: invoiceToSave.customerPhone, balance: 0, createdAt: `${nowStrDate} ${nowStrTime}`, transactions: [], invoiceIds: linkedInvoiceIds }, ...customerAccounts];
       }
       setCustomerAccounts(nextAccounts);
       localStorage.setItem('azizi_customer_accounts', JSON.stringify(nextAccounts));
     }
 '''
-          s = s[:start] + replacement + s[end:]
-          p.write_text(s, encoding='utf-8')
-          print('Customer invoice linkage patched')
-
-      - name: Commit and push
+          s=s[:start]+block+s[end:]
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit customer linkage
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/App.tsx
-          git diff --cached --quiet && exit 0
+          if git diff --cached --quiet; then exit 0; fi
           git commit -m "ربط جميع الفواتير بحسابات العملاء [customer-link-done]"
-          git push
-      - name: Remove one-time patch workflow
-        if: success()
-        run: |
-          git rm .github/workflows/complete-customer-link.yml
-          git commit -m "إزالة مهمة التحديث المؤقتة"
           git push
