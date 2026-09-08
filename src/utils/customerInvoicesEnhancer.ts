@@ -1,8 +1,13 @@
-import { Invoice } from '../types';
+import { Invoice, CustomerAccount } from '../types';
 
 const HISTORY_KEY = 'azizi_invoice_history';
+const CUSTOMERS_KEY = 'azizi_customer_accounts';
 const CARD_MARKER = 'data-azizi-invoices-list';
 const MODAL_MARKER = 'data-azizi-invoices-modal-list';
+
+function arabicDigitsToLatin(value: string): string {
+  return String(value || '').replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+}
 
 function loadInvoices(): Invoice[] {
   try {
@@ -12,8 +17,15 @@ function loadInvoices(): Invoice[] {
   } catch { return []; }
 }
 
+function loadAccounts(): CustomerAccount[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CUSTOMERS_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
 function normalizePhone(phone: string): string {
-  let digits = String(phone || '').replace(/[^0-9]/g, '');
+  let digits = arabicDigitsToLatin(String(phone || '')).replace(/[^0-9]/g, '');
   if (digits.startsWith('00')) digits = digits.slice(2);
   if (digits.startsWith('967')) return digits;
   if (digits.length === 9 && digits.startsWith('7')) return `967${digits}`;
@@ -26,6 +38,11 @@ function getInvoices(name: string): Invoice[] {
   return loadInvoices()
     .filter((invoice) => String(invoice.customer || '').trim().toLowerCase() === target)
     .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+}
+
+function findAccount(name: string): CustomerAccount | undefined {
+  const target = name.trim().toLowerCase();
+  return loadAccounts().find((account) => String(account.name || '').trim().toLowerCase() === target);
 }
 
 function amount(value: number): string {
@@ -126,6 +143,22 @@ function enhance() {
   });
 }
 
+function getCustomerFromButton(button: HTMLElement): { name: string; phone: string; account?: CustomerAccount } {
+  const card = button.closest('div.bg-white') as HTMLElement | null;
+  if (card) {
+    const name = (card.querySelector('h3') as HTMLElement | null)?.textContent?.trim() || '';
+    const phoneEl = card.querySelector('[dir="ltr"]') as HTMLElement | null;
+    const phone = phoneEl?.textContent?.trim() || '';
+    return { name, phone, account: findAccount(name) };
+  }
+  const modal = button.closest('.fixed') as HTMLElement | null;
+  const heading = modal ? Array.from(modal.querySelectorAll('h3')).find((h) => (h.textContent || '').includes('كشف حساب:')) as HTMLElement | undefined : undefined;
+  if (!heading) return { name: '', phone: '' };
+  const name = (heading.textContent || '').replace(/^.*كشف حساب:\s*/, '').trim();
+  const account = findAccount(name);
+  return { name, phone: account?.phone || '', account };
+}
+
 function installWhatsApp() {
   document.addEventListener('click', (event) => {
     const button = (event.target as HTMLElement | null)?.closest('button') as HTMLElement | null;
@@ -133,37 +166,33 @@ function installWhatsApp() {
     const body = document.body.textContent || '';
     if (!body.includes('دليل حسابات العملاء') && !body.includes('كشف حساب:')) return;
 
-    let name = '';
-    let phone = '';
-    const card = button.closest('div.bg-white') as HTMLElement | null;
-    if (card) {
-      name = (card.querySelector('h3') as HTMLElement | null)?.textContent?.trim() || '';
-      phone = (card.querySelector('[dir="ltr"]') as HTMLElement | null)?.textContent?.trim() || '';
-    } else {
-      const modal = button.closest('.fixed') as HTMLElement | null;
-      const heading = modal ? Array.from(modal.querySelectorAll('h3')).find((h) => (h.textContent || '').includes('كشف حساب:')) as HTMLElement | undefined : undefined;
-      if (heading) {
-        name = (heading.textContent || '').replace(/^.*كشف حساب:\s*/, '').trim();
-        phone = (heading.parentElement?.parentElement?.textContent || '').match(/(?:\+?\d[\d\s-]{7,})/)?.[0] || '';
-      }
-    }
-    if (!name) return;
-    const normalized = normalizePhone(phone);
-    if (!normalized) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      window.alert('لا يوجد رقم واتساب محفوظ لهذا العميل. أضف رقم الهاتف أولاً.');
-      return;
-    }
-    const invoices = getInvoices(name);
-    let message = `*حساب العميل: ${name}*\nبقالة العزي للمواد الغذائية\n--------------------------------\n`;
-    if (invoices.length) invoices.slice(0, 20).forEach((inv, i) => {
-      message += `${i + 1}. فاتورة #${inv.number} | ${inv.date || '-'} | ${amount(inv.total)} | ${status(inv)}\n`;
-    });
-    else message += 'لا توجد فواتير محفوظة لهذا العميل.\n';
-    message += '--------------------------------\nكشف الحساب والفواتير المرتبطة من التطبيق.';
+    const customer = getCustomerFromButton(button);
+    if (!customer.name) return;
+    const normalized = normalizePhone(customer.phone || customer.account?.phone || '');
     event.preventDefault();
     event.stopImmediatePropagation();
+    if (!normalized) {
+      window.alert('لا يوجد رقم واتساب محفوظ لهذا العميل. أضف رقم الهاتف من بيانات العميل أولاً.');
+      return;
+    }
+
+    const invoices = getInvoices(customer.name);
+    const balance = Number(customer.account?.balance || 0);
+    let balanceText = balance > 0
+      ? `المبلغ المطلوب: ${amount(balance)} ر.ي`
+      : balance < 0
+      ? `رصيد دائن للعميل: ${amount(Math.abs(balance))} ر.ي`
+      : 'الحساب خالص ومسدد بالكامل';
+    let message = `*كشف حساب العميل: ${customer.name}*\nبقالة العزي للمواد الغذائية\nالرصيد الحالي: ${balanceText}\n--------------------------------\n`;
+    if (invoices.length) {
+      message += `الفواتير المرتبطة (${invoices.length}):\n`;
+      invoices.slice(0, 20).forEach((inv, i) => {
+        message += `${i + 1}. #${inv.number} | ${inv.date || '-'} ${inv.time || ''} | ${amount(inv.total)} ر.ي | ${status(inv)}\n`;
+      });
+    } else {
+      message += 'لا توجد فواتير محفوظة لهذا العميل.\n';
+    }
+    message += '--------------------------------\nيمكن مراجعة كشف الحساب والفواتير من التطبيق.';
     window.open(`https://wa.me/${normalized}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer');
   }, true);
 }
