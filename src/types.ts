@@ -11,6 +11,7 @@ export interface Invoice {
   id: string;
   number: number;
   customer: string;
+  customerId?: string;
   customerPhone?: string;
   date: string;
   time: string;
@@ -21,7 +22,7 @@ export interface Invoice {
   total: number;
   costTotal?: number;
   profit?: number;
-  paymentType: 'cash' | 'credit'; // نقدي أو آجل
+  paymentType: 'cash' | 'credit';
   notes?: string;
 }
 
@@ -38,7 +39,7 @@ export interface CustomerTransaction {
   time: string;
   timestamp: number;
   type: 'invoice_credit' | 'payment' | 'initial_balance';
-  amount: number; // For invoice_credit: +amount (debt). For payment: -amount (reduction).
+  amount: number;
   balanceAfter: number;
   invoiceNumber?: number;
   invoiceId?: string;
@@ -50,9 +51,10 @@ export interface CustomerAccount {
   name: string;
   phone?: string;
   notes?: string;
-  balance: number; // positive = owed to store (مدين), 0 = cleared, negative = store owes customer
+  balance: number;
   createdAt: string;
   transactions: CustomerTransaction[];
+  invoiceIds?: string[];
 }
 
 export interface AppSettings {
