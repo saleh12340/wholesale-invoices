@@ -6,6 +6,7 @@ import { startCustomerInvoicesEnhancer } from './utils/customerInvoicesEnhancer'
 import { startExportAndShareEnhancer } from './utils/exportAndShareEnhancer';
 import { startSettingsEnhancer } from './utils/settingsEnhancer';
 import { startAppCreativeEnhancer } from './utils/appCreativeEnhancer';
+import { startBluetoothOnlyEnhancer } from './utils/bluetoothOnlyEnhancer';
 
 // The small thermal printer is the primary printer profile.
 try {
@@ -26,3 +27,4 @@ startCustomerInvoicesEnhancer();
 startExportAndShareEnhancer();
 startSettingsEnhancer();
 startAppCreativeEnhancer();
+startBluetoothOnlyEnhancer();
